@@ -1,6 +1,9 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404, redirect, render
+from apps.accounts.forms import PatientRegistrationForm
+from apps.accounts.models import User
 from apps.core.permissions import doctor_can_access_patient, require_role
 from apps.core.services import log_audit
 from .forms import AssignmentForm, PatientProfileUpdateForm
@@ -65,6 +68,44 @@ def patient_list(request):
             assignments__doctor__user=request.user, assignments__is_active=True
         )
     return render(request, "patients/list.html", {"patients": patients})
+
+
+@login_required
+def add_patient(request):
+    require_role(request.user, request.user.Role.ADMIN)
+    if request.method == "POST":
+        form = PatientRegistrationForm(request.POST)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    user = User.objects.create_user(
+                        email=form.cleaned_data["email"],
+                        full_name=form.cleaned_data["full_name"],
+                        phone=form.cleaned_data["phone"],
+                        password=form.cleaned_data["password"],
+                        role=User.Role.PATIENT,
+                    )
+                    profile = PatientProfile.objects.create(
+                        user=user,
+                        dob=form.cleaned_data.get("dob"),
+                        gender=form.cleaned_data.get("gender", ""),
+                        blood_group=form.cleaned_data.get("blood_group", ""),
+                        emergency_contact=form.cleaned_data.get("emergency_contact", ""),
+                    )
+                    log_audit(
+                        actor=request.user,
+                        action="patient.created_by_admin",
+                        object_type="PatientProfile",
+                        object_id=profile.id,
+                        metadata={"patient_user_id": user.id},
+                    )
+                messages.success(request, "Patient created successfully.")
+                return redirect("patients:list")
+            except IntegrityError:
+                form.add_error(None, "Unable to create patient due to conflicting data.")
+    else:
+        form = PatientRegistrationForm()
+    return render(request, "patients/add_patient.html", {"form": form})
 
 
 @login_required

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="glass p-4 form-shell reveal">
+  <div class="page-head mb-3">
+    <div>
+      <h1 class="page-title h3">Admin Add Patient</h1>
+      <p class="page-subtitle">Create a patient account directly from admin workspace.</p>
+    </div>
+  </div>
+  <form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn btn-primary" type="submit">Create Patient</button>
+    <a class="btn btn-outline-primary" href="{% url 'patients:list' %}">Back</a>
+  </form>
+</section>
+{% endblock %}
