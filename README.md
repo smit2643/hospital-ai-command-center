@@ -18,6 +18,14 @@ A competition-ready hospital management platform built with Django, PostgreSQL, 
 - [Demo Runbook](docs/06_DEMO_RUNBOOK.md)
 - [Roadmap](docs/07_ROADMAP.md)
 - [Judging Criteria Mapping](docs/08_JUDGING_CRITERIA_MAPPING.md)
+- [Branching Strategy](docs/09_BRANCHING_STRATEGY.md)
+
+## Git Workflow
+- Default branch: `main`
+- Integration branch: `develop`
+- Feature branches by capability (auth, doctor, patient, OCR, signature, UI, API)
+- Supporting branches for `devops`, `docs`, `release`, and `hotfix`
+- CI workflow added at `.github/workflows/ci.yml`
 
 ## Core capabilities
 - Doctor and patient registration
