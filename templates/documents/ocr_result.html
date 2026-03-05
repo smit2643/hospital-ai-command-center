@@ -3,8 +3,8 @@
 <section class="reveal">
   <div class="page-head">
     <div>
-      <h1 class="page-title">OCR Intelligence Panel</h1>
-      <p class="page-subtitle">Document #{{ document.id }} | Status: {{ document.ocr_status }}</p>
+      <h1 class="page-title">OCR Intelligence + Review Console</h1>
+      <p class="page-subtitle">Document #{{ document.id }} | OCR: {{ document.ocr_status }}</p>
     </div>
     <a class="btn btn-outline-primary" href="/documents/{{ document.id }}/ocr/trigger/">Re-run OCR</a>
   </div>
@@ -15,36 +15,53 @@
       <div class="metric-value">{{ document.extracted_confidence }}%</div>
     </div>
     <div class="metric-card">
+      <div class="metric-label">Signature Status</div>
+      <div class="metric-value" style="font-size:1rem">{{ document.signature_status }}</div>
+    </div>
+    <div class="metric-card">
       <div class="metric-label">Document Type</div>
       <div class="metric-value" style="font-size:1rem">{{ document.get_document_type_display }}</div>
     </div>
   </div>
 
   {% if document.extracted_confidence < 65 %}
-    <div class="alert alert-warning">Low confidence extraction. Manual verification recommended before downstream use.</div>
+    <div class="alert alert-warning">Low confidence extraction detected. Review and edit fields before final save.</div>
   {% endif %}
 
   <div class="row g-3">
     <div class="col-lg-6">
       <div class="glass p-3 h-100">
-        <h2 class="h5">Parsed Fields</h2>
-        {% if latest_result %}
-          <pre>{{ latest_result.parsed_fields }}</pre>
-        {% else %}
-          <p>No parsed output yet.</p>
-        {% endif %}
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="glass p-3 h-100">
-        <h2 class="h5">Raw OCR Text</h2>
+        <h2 class="h5">Raw OCR Output</h2>
         {% if latest_result %}
           <pre>{{ latest_result.raw_text }}</pre>
         {% else %}
-          <p>No OCR text available.</p>
+          <p>No OCR result yet. Run OCR first.</p>
         {% endif %}
       </div>
     </div>
+
+    <div class="col-lg-6">
+      <div class="glass p-3 h-100 form-shell">
+        <h2 class="h5">Editable Extracted Fields</h2>
+        <form method="post">
+          {% csrf_token %}
+          {{ form.as_p }}
+          <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-primary" type="submit">Save Reviewed OCR Fields</button>
+            {% if not document.is_signed %}
+            <span class="kbd-pill">Tip: enable “send_for_signature” to email patient before finalization</span>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
+
+  {% if latest_result %}
+  <div class="glass p-3 mt-3">
+    <h2 class="h6">Latest Parsed Snapshot</h2>
+    <pre>{{ latest_result.parsed_fields }}</pre>
+  </div>
+  {% endif %}
 </section>
 {% endblock %}

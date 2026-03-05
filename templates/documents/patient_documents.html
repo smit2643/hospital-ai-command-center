@@ -14,7 +14,7 @@
     <div class="table-wrap">
       <table class="table mb-0" data-filter-table>
         <thead>
-          <tr><th>ID</th><th>Type</th><th>Version</th><th>OCR Status</th><th>Actions</th></tr>
+          <tr><th>ID</th><th>Type</th><th>Version</th><th>OCR Status</th><th>Signature</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {% for d in documents %}
@@ -33,15 +33,26 @@
                 <span class="status-pill status-warn">PENDING</span>
               {% endif %}
             </td>
+            <td>
+              {% if d.signature_status == 'SIGNED' %}
+                <span class="status-pill status-ok">SIGNED</span>
+              {% elif d.signature_status == 'SENT' or d.signature_status == 'VIEWED' %}
+                <span class="status-pill status-info">{{ d.signature_status }}</span>
+              {% else %}
+                <span class="status-pill status-warn">NOT SENT</span>
+              {% endif %}
+            </td>
             <td class="d-flex flex-wrap gap-2">
               <a class="btn btn-outline-primary btn-sm" href="{{ d.file.url }}">Open File</a>
               <a class="btn btn-outline-primary btn-sm" href="/documents/{{ d.id }}/ocr/trigger/">Run OCR</a>
               <a class="btn btn-outline-primary btn-sm" href="/documents/{{ d.id }}/ocr/result/">View OCR</a>
+              {% if not d.is_signed %}
               <a class="btn btn-outline-success btn-sm" href="/signatures/request/{{ d.id }}/">Request Signature</a>
+              {% endif %}
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="5">No documents uploaded.</td></tr>
+          <tr><td colspan="6">No documents uploaded.</td></tr>
           {% endfor %}
         </tbody>
       </table>

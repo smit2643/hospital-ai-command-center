@@ -1,4 +1,5 @@
 import re
+import os
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,37 @@ def preprocess_image(file_path: str) -> np.ndarray:
 def extract_text(file_path: str) -> str:
     processed = preprocess_image(file_path)
     return pytesseract.image_to_string(processed)
+
+
+def extract_text_with_gemini(file_path: str) -> str:
+    """
+    Optional provider.
+    Uses Gemini only when OCR_PROVIDER=gemini and GEMINI_API_KEY is configured.
+    Falls back to Tesseract automatically if unavailable.
+    """
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not configured")
+    try:
+        import google.generativeai as genai  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("google-generativeai dependency is missing") from exc
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-1.5-flash"))
+    with open(file_path, "rb") as f:
+        file_bytes = f.read()
+    prompt = "Extract all readable text from this hospital document with line structure preserved."
+    response = model.generate_content(
+        [
+            prompt,
+            {"mime_type": "image/png", "data": file_bytes},
+        ]
+    )
+    text = getattr(response, "text", "") or ""
+    if not text.strip():
+        raise RuntimeError("Gemini OCR response was empty")
+    return text
 
 
 def parse_lab_report(raw_text: str) -> dict[str, Any]:
@@ -70,10 +102,19 @@ def run_ocr_pipeline(file_path: str) -> dict[str, Any]:
             "confidence": 0.0,
         }
 
-    raw_text = extract_text(file_path)
+    provider = os.getenv("OCR_PROVIDER", "tesseract").strip().lower()
+    if provider == "gemini":
+        try:
+            raw_text = extract_text_with_gemini(file_path)
+        except Exception:
+            raw_text = extract_text(file_path)
+            provider = "tesseract_fallback"
+    else:
+        raw_text = extract_text(file_path)
     parsed = parse_lab_report(raw_text)
     return {
         "raw_text": raw_text,
         "parsed": parsed["parsed"],
         "confidence": parsed["confidence"],
+        "provider": provider,
     }

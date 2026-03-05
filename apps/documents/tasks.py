@@ -28,7 +28,7 @@ def process_document_ocr(document_id: int):
             action="document.ocr_completed",
             object_type="PatientDocument",
             object_id=document.id,
-            metadata={"confidence": result["confidence"]},
+            metadata={"confidence": result["confidence"], "provider": result.get("provider", "tesseract")},
         )
     except Exception as exc:  # noqa: BLE001
         document.ocr_status = PatientDocument.OCRStatus.FAILED

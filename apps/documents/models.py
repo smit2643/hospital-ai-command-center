@@ -45,6 +45,21 @@ class PatientDocument(models.Model):
     def __str__(self) -> str:
         return f"Document #{self.id} ({self.document_type})"
 
+    @property
+    def latest_signature_request(self):
+        return self.signature_requests.order_by("-created_at").first()
+
+    @property
+    def signature_status(self) -> str:
+        req = self.latest_signature_request
+        if not req:
+            return "NOT_SENT"
+        return req.status
+
+    @property
+    def is_signed(self) -> bool:
+        return self.signature_requests.filter(status="SIGNED").exists()
+
 
 class OCRResult(models.Model):
     document = models.ForeignKey(PatientDocument, on_delete=models.CASCADE, related_name="ocr_results")

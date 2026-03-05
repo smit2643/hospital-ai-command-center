@@ -19,6 +19,7 @@ A competition-ready hospital management platform built with Django, PostgreSQL, 
 - [Roadmap](docs/07_ROADMAP.md)
 - [Judging Criteria Mapping](docs/08_JUDGING_CRITERIA_MAPPING.md)
 - [Branching Strategy](docs/09_BRANCHING_STRATEGY.md)
+- [OCR Review + Signature Flow](docs/10_OCR_REVIEW_AND_SIGNATURE_FLOW.md)
 
 ## Git Workflow
 - Default branch: `main`
@@ -34,6 +35,8 @@ A competition-ready hospital management platform built with Django, PostgreSQL, 
 - Document versioning and metadata tracking
 - OCR extraction for lab-report style image documents
 - Signature request by email via secure token links
+- OCR review console with editable extracted fields before final save
+- Optional send-for-signature from OCR review screen
 - Public sign endpoint with expiration guard
 - Signed PDF artifact storage and hash persistence
 - Audit logging across sensitive operations
@@ -111,6 +114,9 @@ Use `.env.example` as baseline. Most important:
 
 ## Notes
 - OCR in v1 is tuned for image-based lab reports (`png/jpg/jpeg/tiff/bmp`).
+- Sample OCR document: `sample_data/hospital_dummy_lab_report.png`
+- You can regenerate sample: `docker compose exec web python scripts/generate_dummy_lab_report.py`
+- OCR provider defaults to open-source Tesseract. Optional Gemini integration is supported via env variables.
 - For laptop-only demo without worker, set `CELERY_TASK_ALWAYS_EAGER=True`.
 - For local testing without SMTP, set:
   - `EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend`
