@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero-stage reveal">
+  <div class="hero-grid">
+    <div class="hero card lift" data-tilt>
+      <div class="mb-3">
+        <span class="hero-chip">Hospital Operations AI</span>
+        <span class="hero-chip">OCR + Signature Chain</span>
+        <span class="hero-chip">Audit-Ready by Design</span>
+      </div>
+      <h1 class="display-5 fw-bold mb-3">CEO-Ready Digital Command Center for Healthcare Workflows</h1>
+      <p class="lead mb-4">From doctor onboarding to signed document archival, every critical workflow is connected, measurable, and verifiable.</p>
+      <div class="d-flex flex-wrap gap-2">
+        <a href="/login/" class="btn btn-light btn-lg">Launch Control Panel</a>
+        <a href="/register/doctor/" class="btn btn-outline-light btn-lg">Register Doctor</a>
+      </div>
+    </div>
+
+    <div class="glass p-3 pulse-panel lift" data-tilt>
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="h6 m-0">System Pulse</h2>
+        <span class="kbd-pill">Live Demo</span>
+      </div>
+
+      <div class="pulse-ring-grid mb-3">
+        <div class="pulse-ring" data-ring="92">
+          <span>92%</span>
+          <small>OCR Clarity</small>
+        </div>
+        <div class="pulse-ring" data-ring="98">
+          <span>98%</span>
+          <small>Workflow Success</small>
+        </div>
+        <div class="pulse-ring" data-ring="100">
+          <span>100%</span>
+          <small>Audit Trace</small>
+        </div>
+      </div>
+
+      <div class="metric-card mb-2">
+        <div class="metric-label">Documents Processed</div>
+        <div class="metric-value" data-counter="126">126</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Signature Turnaround (avg)</div>
+        <div class="metric-value">7m</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="glass p-4 mt-3 reveal">
+  <div class="page-head mb-3">
+    <div>
+      <h2 class="page-title">Interactive Workflow Simulator</h2>
+      <p class="page-subtitle">Demonstrate full hospital flow in three views during board presentation.</p>
+    </div>
+  </div>
+
+  <div class="sim-tabs" role="tablist">
+    <button class="sim-tab is-active" data-tab-btn="admin">Admin Control</button>
+    <button class="sim-tab" data-tab-btn="doctor">Doctor Ops</button>
+    <button class="sim-tab" data-tab-btn="patient">Patient Journey</button>
+  </div>
+
+  <div class="tab-panel is-active" data-tab-panel="admin">
+    <div class="row g-3">
+      <div class="col-md-7">
+        <h3 class="h5">Governance & Approval Layer</h3>
+        <p class="mb-2">Queue-driven doctor verification, assignment control, and oversight workflows.</p>
+        <div class="progress-wrap">
+          <label>Approval SLA Performance</label>
+          <div class="bar"><div class="bar-fill" data-progress="84"></div></div>
+        </div>
+        <div class="progress-wrap">
+          <label>Compliance Event Coverage</label>
+          <div class="bar"><div class="bar-fill" data-progress="100"></div></div>
+        </div>
+      </div>
+      <div class="col-md-5">
+        <div class="feature-tile">
+          <strong>Primary Value</strong>
+          <p>Removes onboarding bottlenecks while keeping full governance traceability.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab-panel="doctor">
+    <div class="row g-3">
+      <div class="col-md-7">
+        <h3 class="h5">Clinical Document Intelligence</h3>
+        <p class="mb-2">Upload reports, extract structured values through OCR, and trigger signature flows in one path.</p>
+        <div class="progress-wrap">
+          <label>OCR-to-Structured Extraction</label>
+          <div class="bar"><div class="bar-fill" data-progress="91"></div></div>
+        </div>
+        <div class="progress-wrap">
+          <label>Doctor Productivity Lift</label>
+          <div class="bar"><div class="bar-fill" data-progress="76"></div></div>
+        </div>
+      </div>
+      <div class="col-md-5">
+        <div class="feature-tile">
+          <strong>Primary Value</strong>
+          <p>Converts fragmented paperwork into actionable, reviewable patient data quickly.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab-panel="patient">
+    <div class="row g-3">
+      <div class="col-md-7">
+        <h3 class="h5">Trust-Centered Signature Experience</h3>
+        <p class="mb-2">Secure token access, draw/type signature, receive signed artifact with integrity hash.</p>
+        <div class="progress-wrap">
+          <label>Signature Completion Rate</label>
+          <div class="bar"><div class="bar-fill" data-progress="88"></div></div>
+        </div>
+        <div class="progress-wrap">
+          <label>Integrity Verification Readiness</label>
+          <div class="bar"><div class="bar-fill" data-progress="100"></div></div>
+        </div>
+      </div>
+      <div class="col-md-5">
+        <div class="feature-tile">
+          <strong>Primary Value</strong>
+          <p>Delivers convenience for patients while preserving legal and operational confidence.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mt-3 reveal">
+  <div class="page-head">
+    <div>
+      <h2 class="page-title">Execution Roadmap</h2>
+      <p class="page-subtitle">Platform growth path from hospital workflows to enterprise ecosystem integration.</p>
+    </div>
+  </div>
+  <div class="roadmap-grid">
+    <article class="road-card lift" data-tilt>
+      <span>Phase 1</span>
+      <h4>Operational Core</h4>
+      <p>Role-based onboarding, OCR, signatures, audit logging, deployment automation.</p>
+    </article>
+    <article class="road-card lift" data-tilt>
+      <span>Phase 2</span>
+      <h4>Workflow Expansion</h4>
+      <p>PDF OCR, richer extraction, notification center, expanded role permissions.</p>
+    </article>
+    <article class="road-card lift" data-tilt>
+      <span>Phase 3</span>
+      <h4>Enterprise Scale</h4>
+      <p>Multi-tenant hospitals, EHR connectors, analytics and performance intelligence.</p>
+    </article>
+    <article class="road-card lift" data-tilt>
+      <span>Phase 4</span>
+      <h4>AI Intelligence Layer</h4>
+      <p>Anomaly detection, predictive triage, and clinical copilot-assisted workflows.</p>
+    </article>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="reveal">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">OCR Intelligence Panel</h1>
+      <p class="page-subtitle">Document #{{ document.id }} | Status: {{ document.ocr_status }}</p>
+    </div>
+    <a class="btn btn-outline-primary" href="/documents/{{ document.id }}/ocr/trigger/">Re-run OCR</a>
+  </div>
+
+  <div class="metric-grid mb-3">
+    <div class="metric-card">
+      <div class="metric-label">OCR Confidence</div>
+      <div class="metric-value">{{ document.extracted_confidence }}%</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Document Type</div>
+      <div class="metric-value" style="font-size:1rem">{{ document.get_document_type_display }}</div>
+    </div>
+  </div>
+
+  {% if document.extracted_confidence < 65 %}
+    <div class="alert alert-warning">Low confidence extraction. Manual verification recommended before downstream use.</div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="glass p-3 h-100">
+        <h2 class="h5">Parsed Fields</h2>
+        {% if latest_result %}
+          <pre>{{ latest_result.parsed_fields }}</pre>
+        {% else %}
+          <p>No parsed output yet.</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="glass p-3 h-100">
+        <h2 class="h5">Raw OCR Text</h2>
+        {% if latest_result %}
+          <pre>{{ latest_result.raw_text }}</pre>
+        {% else %}
+          <p>No OCR text available.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

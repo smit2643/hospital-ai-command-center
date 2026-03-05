@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="glass p-4 form-shell reveal">
+  <h1 class="page-title h3">Assign Doctor</h1>
+  <p class="page-subtitle">Patient: <strong>{{ patient.user.full_name }}</strong></p>
+  <form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn btn-primary">Assign Now</button>
+  </form>
+</section>
+{% endblock %}

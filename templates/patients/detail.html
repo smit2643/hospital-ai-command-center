@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="glass p-4 reveal">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">{{ patient.user.full_name }}</h1>
+      <p class="page-subtitle">Patient detail and quick access links.</p>
+    </div>
+    <a class="btn btn-primary" href="/patients/{{ patient.id }}/documents/">Open Documents</a>
+  </div>
+
+  <div class="metric-grid">
+    <div class="metric-card"><div class="metric-label">Email</div><div class="metric-value" style="font-size:1rem">{{ patient.user.email }}</div></div>
+    <div class="metric-card"><div class="metric-label">Blood Group</div><div class="metric-value">{{ patient.blood_group|default:'-' }}</div></div>
+    <div class="metric-card"><div class="metric-label">Emergency Contact</div><div class="metric-value" style="font-size:1rem">{{ patient.emergency_contact|default:'-' }}</div></div>
+  </div>
+</section>
+{% endblock %}

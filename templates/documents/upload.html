@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="glass p-4 form-shell reveal">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Document Intake</h1>
+      <p class="page-subtitle">Upload report files for OCR and e-sign workflows.</p>
+    </div>
+  </div>
+  <div class="file-drop mb-3">
+    <strong>Drag your medical file here</strong>
+    <div class="small mt-1">or use the chooser below</div>
+    <div class="small mt-2" data-file-name>No file selected</div>
+  </div>
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn btn-primary">Upload Document</button>
+  </form>
+</section>
+{% endblock %}

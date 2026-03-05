@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="reveal">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Document Vault</h1>
+      <p class="page-subtitle">Patient: {{ patient.user.full_name }}</p>
+    </div>
+    <a class="btn btn-primary" href="/documents/upload/">Upload New Version</a>
+  </div>
+
+  <div class="glass p-3">
+    <input class="form-control mb-3" placeholder="Search document type, status, id" data-table-filter />
+    <div class="table-wrap">
+      <table class="table mb-0" data-filter-table>
+        <thead>
+          <tr><th>ID</th><th>Type</th><th>Version</th><th>OCR Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for d in documents %}
+          <tr>
+            <td>#{{ d.id }}</td>
+            <td>{{ d.get_document_type_display }}</td>
+            <td>v{{ d.version }}</td>
+            <td>
+              {% if d.ocr_status == 'DONE' %}
+                <span class="status-pill status-ok">DONE</span>
+              {% elif d.ocr_status == 'FAILED' %}
+                <span class="status-pill status-bad">FAILED</span>
+              {% elif d.ocr_status == 'PROCESSING' %}
+                <span class="status-pill status-info">PROCESSING</span>
+              {% else %}
+                <span class="status-pill status-warn">PENDING</span>
+              {% endif %}
+            </td>
+            <td class="d-flex flex-wrap gap-2">
+              <a class="btn btn-outline-primary btn-sm" href="{{ d.file.url }}">Open File</a>
+              <a class="btn btn-outline-primary btn-sm" href="/documents/{{ d.id }}/ocr/trigger/">Run OCR</a>
+              <a class="btn btn-outline-primary btn-sm" href="/documents/{{ d.id }}/ocr/result/">View OCR</a>
+              <a class="btn btn-outline-success btn-sm" href="/signatures/request/{{ d.id }}/">Request Signature</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5">No documents uploaded.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

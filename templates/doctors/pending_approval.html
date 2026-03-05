@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="glass p-4 reveal">
+  <h1 class="page-title h3">Verification in Progress</h1>
+  <p class="page-subtitle">Your doctor account is registered and awaiting admin review. You will get full access after approval.</p>
+  <span class="status-pill status-warn">{{ doctor_profile.approval_status }}</span>
+</section>
+{% endblock %}

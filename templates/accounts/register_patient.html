@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center reveal">
+  <div class="col-lg-8">
+    <div class="glass p-4 form-shell">
+      <div class="page-head mb-3">
+        <div>
+          <h1 class="page-title h3">Patient Registration</h1>
+          <p class="page-subtitle">Create your patient account and start managing your records.</p>
+        </div>
+      </div>
+      <form method="post">{% csrf_token %}
+        {{ form.as_p }}
+        <button class="btn btn-primary" type="submit">Create Account</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

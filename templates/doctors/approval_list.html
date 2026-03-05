@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="reveal">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Doctor Approval Queue</h1>
+      <p class="page-subtitle">Review and activate pending doctor accounts.</p>
+    </div>
+    <span class="kbd-pill">Pending: {{ pending_profiles|length }}</span>
+  </div>
+
+  <div class="glass p-3">
+    <input class="form-control mb-3" placeholder="Search by name/email/specialization" data-table-filter />
+    <div class="table-wrap">
+      <table class="table mb-0" data-filter-table>
+        <thead><tr><th>Name</th><th>Email</th><th>Specialization</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for profile in pending_profiles %}
+          <tr>
+            <td>{{ profile.user.full_name }}</td>
+            <td>{{ profile.user.email }}</td>
+            <td>{{ profile.specialization }}</td>
+            <td class="d-flex gap-2">
+              <a class="btn btn-success btn-sm" href="/admin/doctor-approvals/{{ profile.id }}/APPROVED/">Approve</a>
+              <a class="btn btn-danger btn-sm" href="/admin/doctor-approvals/{{ profile.id }}/REJECTED/">Reject</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4">No pending approvals.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="reveal">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Doctor Command Desk</h1>
+      <p class="page-subtitle">{{ doctor_profile.user.full_name }} | {{ doctor_profile.specialization }}</p>
+    </div>
+    <a class="btn btn-primary" href="/patients/">Open Patient Hub</a>
+  </div>
+
+  <div class="metric-grid mb-3">
+    <div class="metric-card"><div class="metric-label">Assigned Patients</div><div class="metric-value" data-counter="{{ assignments|length }}">{{ assignments|length }}</div></div>
+    <div class="metric-card"><div class="metric-label">Approval Status</div><div class="metric-value">{{ doctor_profile.approval_status }}</div></div>
+    <div class="metric-card"><div class="metric-label">Experience</div><div class="metric-value">{{ doctor_profile.years_experience }}y</div></div>
+  </div>
+
+  <div class="glass p-3">
+    <input class="form-control mb-3" placeholder="Filter patients..." data-table-filter />
+    <div class="table-wrap">
+      <table class="table mb-0" data-filter-table>
+        <thead><tr><th>Patient</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for assignment in assignments %}
+          <tr>
+            <td>{{ assignment.patient.user.full_name }}</td>
+            <td><a href="/patients/{{ assignment.patient.id }}/documents/" class="btn btn-outline-primary btn-sm">Open Documents</a></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="2">No assigned patients.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

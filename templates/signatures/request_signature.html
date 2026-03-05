@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="glass p-4 form-shell reveal">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Send Signature Request</h1>
+      <p class="page-subtitle">Document #{{ document.id }} for {{ document.patient.user.full_name }}</p>
+    </div>
+  </div>
+  <form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn btn-primary">Send Secure Sign Link</button>
+  </form>
+</section>
+{% endblock %}
