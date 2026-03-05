@@ -36,6 +36,7 @@ class SignatureArtifact(models.Model):
     class SignatureType(models.TextChoices):
         DRAWN = "DRAWN", "Drawn"
         TYPED = "TYPED", "Typed"
+        UPLOADED = "UPLOADED", "Uploaded"
 
     signature_request = models.OneToOneField(SignatureRequest, on_delete=models.CASCADE, related_name="artifact")
     signature_type = models.CharField(max_length=16, choices=SignatureType.choices)

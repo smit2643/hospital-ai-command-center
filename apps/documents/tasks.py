@@ -2,6 +2,7 @@ from celery import shared_task
 from apps.core.services import log_audit
 from .models import OCRResult, PatientDocument
 from .ocr import run_ocr_pipeline
+from .services import upsert_extraction_from_parsed
 
 
 @shared_task
@@ -18,7 +19,8 @@ def process_document_ocr(document_id: int):
             parsed_fields=result["parsed"],
             parser_version="v1",
         )
-        document.extracted_summary = result["parsed"]
+        upsert_extraction_from_parsed(document, result["parsed"])
+        document.extracted_summary = {}
         document.extracted_confidence = result["confidence"]
         document.ocr_status = PatientDocument.OCRStatus.DONE
         document.save(update_fields=["extracted_summary", "extracted_confidence", "ocr_status", "updated_at"])

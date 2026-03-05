@@ -62,6 +62,7 @@ def finalize_signature(
     signature_type: str,
     typed_signature: str,
     drawn_signature_data: str,
+    uploaded_signature_file,
     ip_address: str,
     user_agent: str,
 ) -> SignatureArtifact:
@@ -71,6 +72,9 @@ def finalize_signature(
     if signature_type == SignatureArtifact.SignatureType.DRAWN:
         image_bytes = _decode_base64_image(drawn_signature_data)
         image_ext = "png"
+    elif signature_type == SignatureArtifact.SignatureType.UPLOADED:
+        image_bytes = uploaded_signature_file.read()
+        image_ext = os.path.splitext(uploaded_signature_file.name or "")[1].lstrip(".").lower() or "png"
     else:
         image_bytes = _make_typed_signature_image(typed_signature or sign_request.signer_email)
         image_ext = "png"

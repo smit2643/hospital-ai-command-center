@@ -70,3 +70,32 @@ class OCRResult(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class DocumentExtraction(models.Model):
+    document = models.OneToOneField(PatientDocument, on_delete=models.CASCADE, related_name="extraction")
+    patient_name = models.CharField(max_length=255, blank=True)
+    report_date_text = models.CharField(max_length=100, blank=True)
+    hospital_name = models.CharField(max_length=255, blank=True)
+    doctor_name = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+    is_reviewed = models.BooleanField(default=False)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+
+class DocumentLabTest(models.Model):
+    extraction = models.ForeignKey(DocumentExtraction, on_delete=models.CASCADE, related_name="tests")
+    test_name = models.CharField(max_length=255)
+    value = models.CharField(max_length=64, blank=True)
+    unit = models.CharField(max_length=32, blank=True)
+    reference_range = models.CharField(max_length=128, blank=True)
+    order_index = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order_index", "id"]

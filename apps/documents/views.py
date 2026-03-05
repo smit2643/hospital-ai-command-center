@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.forms import formset_factory
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from apps.core.permissions import doctor_can_access_patient, require_role
@@ -6,11 +7,11 @@ from apps.core.services import log_audit
 from apps.patients.models import PatientProfile
 from apps.signatures.models import SignatureRequest
 from apps.signatures.services import build_signature_expiry
-from apps.signatures.tasks import send_signature_request_email
-from .forms import DocumentUploadForm, OCRReviewForm
-from .models import PatientDocument
+from apps.signatures.tasks import dispatch_signature_request_email
+from .forms import DocumentUploadForm, OCRLabTestForm, OCRReviewForm
+from .models import DocumentLabTest, PatientDocument
+from .services import mark_extraction_reviewed, upsert_extraction_from_parsed
 from .tasks import process_document_ocr
-import json
 
 
 @login_required
@@ -85,33 +86,59 @@ def ocr_result(request, document_id: int):
     latest_result = document.ocr_results.first()
     latest_signature_request = document.signature_requests.order_by("-created_at").first()
 
-    source = latest_result.parsed_fields if latest_result else document.extracted_summary or {}
-    initial_tests = source.get("tests", [])
-    initial = {
-        "patient_name": source.get("patient_name", ""),
-        "report_date": source.get("report_date", ""),
-        "hospital_name": source.get("hospital_name", ""),
-        "doctor_name": source.get("doctor_name", ""),
-        "tests_json": json.dumps(initial_tests, indent=2) if initial_tests else "[]",
-        "notes": source.get("notes", ""),
-        "signer_email": document.patient.user.email,
-    }
+    extraction = getattr(document, "extraction", None)
+    if extraction is None:
+        parsed_source = latest_result.parsed_fields if latest_result else {}
+        if parsed_source:
+            extraction = upsert_extraction_from_parsed(document, parsed_source)
+
+    LabTestFormSet = formset_factory(OCRLabTestForm, extra=1)
+    initial_test_rows = []
+    if extraction:
+        initial_test_rows = [
+            {
+                "test_name": row.test_name,
+                "value": row.value,
+                "unit": row.unit,
+                "reference_range": row.reference_range,
+            }
+            for row in extraction.tests.all()
+        ]
+    elif latest_result and isinstance(latest_result.parsed_fields.get("tests"), list):
+        initial_test_rows = latest_result.parsed_fields.get("tests", [])
+
+    if not initial_test_rows:
+        initial_test_rows = [{"test_name": "", "value": "", "unit": "", "reference_range": ""}]
 
     if request.method == "POST":
-        form = OCRReviewForm(request.POST)
-        if form.is_valid():
-            reviewed_payload = {
-                "patient_name": form.cleaned_data["patient_name"],
-                "report_date": form.cleaned_data["report_date"],
-                "hospital_name": form.cleaned_data["hospital_name"],
-                "doctor_name": form.cleaned_data["doctor_name"],
-                "tests": form.cleaned_data["tests_json"],
-                "notes": form.cleaned_data["notes"],
-                "ocr_reviewed": True,
-                "reviewed_by_user_id": request.user.id,
-            }
+        if extraction is None:
+            extraction = upsert_extraction_from_parsed(document, {})
+        form = OCRReviewForm(request.POST, instance=extraction)
+        formset = LabTestFormSet(request.POST, prefix="tests")
+        if form.is_valid() and formset.is_valid():
+            extraction = form.save()
+            extraction.tests.all().delete()
+            rows = []
+            for idx, test_form in enumerate(formset):
+                if test_form.cleaned_data.get("DELETE"):
+                    continue
+                if not test_form.row_has_data():
+                    continue
+                rows.append(
+                    DocumentLabTest(
+                        extraction=extraction,
+                        test_name=test_form.cleaned_data["test_name"].strip(),
+                        value=test_form.cleaned_data["value"].strip(),
+                        unit=test_form.cleaned_data["unit"].strip(),
+                        reference_range=test_form.cleaned_data["reference_range"].strip(),
+                        order_index=idx,
+                    )
+                )
+            if rows:
+                DocumentLabTest.objects.bulk_create(rows)
+            mark_extraction_reviewed(extraction, request.user)
 
-            document.extracted_summary = reviewed_payload
+            document.extracted_summary = {}
             if document.ocr_status != PatientDocument.OCRStatus.DONE:
                 document.ocr_status = PatientDocument.OCRStatus.DONE
             document.save(update_fields=["extracted_summary", "ocr_status", "updated_at"])
@@ -134,7 +161,7 @@ def ocr_result(request, document_id: int):
                         signer_email=form.cleaned_data["signer_email"],
                         expires_at=build_signature_expiry(),
                     )
-                    send_signature_request_email.delay(sign_request.id)
+                    sent, error = dispatch_signature_request_email(sign_request.id)
                     log_audit(
                         actor=request.user,
                         action="signature.requested_from_ocr_review",
@@ -142,7 +169,10 @@ def ocr_result(request, document_id: int):
                         object_id=sign_request.id,
                         metadata={"document_id": document.id},
                     )
-                    messages.success(request, "OCR details saved and signature request sent to patient email.")
+                    if sent:
+                        messages.success(request, "OCR details saved and signature request sent to patient email.")
+                    else:
+                        messages.warning(request, f"OCR details saved. Email failed: {error}")
                 else:
                     messages.info(request, "OCR details saved. Signature already pending or completed.")
             else:
@@ -150,12 +180,18 @@ def ocr_result(request, document_id: int):
 
             return redirect("documents:ocr_result", document_id=document.id)
     else:
-        form = OCRReviewForm(initial=initial)
+        if extraction is None:
+            parsed = latest_result.parsed_fields if latest_result else {}
+            extraction = upsert_extraction_from_parsed(document, parsed)
+        form = OCRReviewForm(instance=extraction, initial={"signer_email": document.patient.user.email})
+        formset = LabTestFormSet(initial=initial_test_rows, prefix="tests")
 
     context = {
         "document": document,
         "latest_result": latest_result,
         "latest_signature_request": latest_signature_request,
         "form": form,
+        "formset": formset,
+        "extraction": extraction,
     }
     return render(request, "documents/ocr_result.html", context)

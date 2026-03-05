@@ -2,6 +2,7 @@
   const typeField = document.getElementById('id_signature_type');
   const typedBox = document.getElementById('typed-box');
   const drawnBox = document.getElementById('drawn-box');
+  const uploadBox = document.getElementById('upload-box');
   const canvas = document.getElementById('sig-canvas');
   const hidden = document.getElementById('drawn_signature_data');
   const clearBtn = document.getElementById('clear-sig');
@@ -10,9 +11,12 @@
   if (!typeField || !canvas || !hidden || !form) return;
 
   function refreshMode() {
-    const drawn = typeField.value === 'DRAWN';
-    typedBox.style.display = drawn ? 'none' : 'block';
-    drawnBox.style.display = drawn ? 'block' : 'none';
+    const mode = typeField.value;
+    typedBox.style.display = mode === 'TYPED' ? 'block' : 'none';
+    drawnBox.style.display = mode === 'DRAWN' ? 'block' : 'none';
+    if (uploadBox) {
+      uploadBox.style.display = mode === 'UPLOADED' ? 'block' : 'none';
+    }
   }
 
   const ctx = canvas.getContext('2d');
@@ -56,6 +60,8 @@
   form.addEventListener('submit', function () {
     if (typeField.value === 'DRAWN') {
       hidden.value = canvas.toDataURL('image/png');
+    } else {
+      hidden.value = '';
     }
   });
 

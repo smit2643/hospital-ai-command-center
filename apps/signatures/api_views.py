@@ -4,7 +4,7 @@ from apps.core.permissions import doctor_can_access_patient
 from .models import SignatureRequest
 from .serializers import SignatureRequestSerializer
 from .services import build_signature_expiry
-from .tasks import send_signature_request_email
+from .tasks import dispatch_signature_request_email
 
 
 class SignatureRequestViewSet(viewsets.ReadOnlyModelViewSet):
@@ -38,8 +38,12 @@ class SignatureRequestCreateAPI(viewsets.ViewSet):
             signer_email=serializer.validated_data["signer_email"],
             expires_at=build_signature_expiry(),
         )
-        send_signature_request_email.delay(sign_request.id)
-        return response.Response(SignatureRequestSerializer(sign_request).data, status=status.HTTP_201_CREATED)
+        sent, error = dispatch_signature_request_email(sign_request.id)
+        payload = SignatureRequestSerializer(sign_request).data
+        payload["email_sent"] = sent
+        if error:
+            payload["email_error"] = error
+        return response.Response(payload, status=status.HTTP_201_CREATED)
 
 
 class SignatureStatusAPI(viewsets.ViewSet):
