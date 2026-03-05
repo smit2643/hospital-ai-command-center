@@ -1,7 +1,8 @@
 from django.contrib import messages
-from django.contrib.auth import login
-from django.contrib.auth.views import LoginView, LogoutView
+from django.contrib.auth import login, logout
+from django.contrib.auth.views import LoginView
 from django.shortcuts import redirect, render
+from django.views.decorators.http import require_http_methods
 
 from apps.core.services import log_audit
 from apps.doctors.models import DoctorProfile
@@ -16,8 +17,12 @@ class UserLoginView(LoginView):
     authentication_form = EmailAuthenticationForm
 
 
-class UserLogoutView(LogoutView):
-    next_page = "accounts:login"
+@require_http_methods(["GET", "POST"])
+def user_logout(request):
+    if request.user.is_authenticated:
+        log_audit(actor=request.user, action="auth.logout", object_type="User", object_id=request.user.id)
+    logout(request)
+    return redirect("core:home")
 
 
 def register_doctor(request):
