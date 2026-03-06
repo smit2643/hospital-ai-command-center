@@ -1,5 +1,6 @@
 import os
 import re
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -98,6 +99,41 @@ def _kv_lookup(kv: dict[str, str], logical_key: str) -> str:
     return ""
 
 
+def _line_alias_lookup(lines: list[str], logical_key: str) -> str:
+    aliases = sorted(FIELD_ALIASES.get(logical_key, [logical_key]), key=len, reverse=True)
+    for alias in aliases:
+        alias_regex = re.sub(r"\s+", r"\\s+", re.escape(alias))
+        if " " in alias:
+            pattern = re.compile(rf"^\s*{alias_regex}\s*[:\-]?\s*(.+)$", re.IGNORECASE)
+        else:
+            # For single-token aliases, require explicit delimiter to avoid false positives.
+            pattern = re.compile(rf"^\s*{alias_regex}\s*[:\-]\s*(.+)$", re.IGNORECASE)
+        for line in lines:
+            match = pattern.match(line.strip())
+            if match and match.group(1).strip():
+                return match.group(1).strip()
+
+    # OCR typo-tolerant fallback for keys like "Doctor Nane"
+    for line in lines:
+        raw = line.strip()
+        if not raw:
+            continue
+        if ":" in raw:
+            key_part, value_part = raw.split(":", 1)
+        else:
+            pieces = raw.split()
+            if len(pieces) < 3:
+                continue
+            key_part = " ".join(pieces[:2])
+            value_part = " ".join(pieces[2:])
+        key_norm = _normalize_key(key_part)
+        for alias in aliases:
+            ratio = SequenceMatcher(None, key_norm, _normalize_key(alias)).ratio()
+            if ratio >= 0.72 and value_part.strip():
+                return value_part.strip()
+    return ""
+
+
 def _find_line_value(lines: list[str], keywords: tuple[str, ...]) -> str:
     for line in lines:
         lower = line.lower()
@@ -161,7 +197,7 @@ def extract_identity(raw_text: str) -> dict[str, str]:
         any_date = DATE_PATTERN.search(raw_text)
         dob_match = any_date.group(1) if any_date else ""
 
-    patient_name = _kv_lookup(kv, "patient_name") or _find_line_value(lines, ("patient", "name"))
+    patient_name = _kv_lookup(kv, "patient_name") or _line_alias_lookup(lines, "patient_name") or _find_line_value(lines, ("patient", "name"))
 
     return {
         "patient_name": patient_name,
@@ -181,12 +217,12 @@ def parse_lab_report(raw_text: str) -> dict[str, Any]:
         if parsed:
             tests.append(parsed)
 
-    clinical_note = _kv_lookup(kv, "clinical_note")
-    patient_name = _kv_lookup(kv, "patient_name")
-    report_date = _kv_lookup(kv, "report_date")
-    hospital_name = _kv_lookup(kv, "hospital_name")
-    doctor_name = _kv_lookup(kv, "doctor_name")
-    patient_id = _kv_lookup(kv, "patient_id")
+    clinical_note = _kv_lookup(kv, "clinical_note") or _line_alias_lookup(lines, "clinical_note")
+    patient_name = _kv_lookup(kv, "patient_name") or _line_alias_lookup(lines, "patient_name")
+    report_date = _kv_lookup(kv, "report_date") or _line_alias_lookup(lines, "report_date")
+    hospital_name = _kv_lookup(kv, "hospital_name") or _line_alias_lookup(lines, "hospital_name")
+    doctor_name = _kv_lookup(kv, "doctor_name") or _line_alias_lookup(lines, "doctor_name")
+    patient_id = _kv_lookup(kv, "patient_id") or _line_alias_lookup(lines, "patient_id")
 
     if not hospital_name and lines:
         for line in lines[:4]:
@@ -210,7 +246,7 @@ def parse_lab_report(raw_text: str) -> dict[str, Any]:
         "doctor_name": doctor_name,
         "notes": clinical_note,
         "document_fields": [
-            {"key": "lab_name", "value_short": _kv_lookup(kv, "lab_name") or hospital_name},
+            {"key": "lab_name", "value_short": _kv_lookup(kv, "lab_name") or _line_alias_lookup(lines, "lab_name") or hospital_name},
             {"key": "sample_id", "value_short": patient_id},
             {"key": "ordering_doctor", "value_short": doctor_name},
             {"key": "findings_summary", "value_text": "\n".join(findings)},
@@ -238,10 +274,10 @@ def parse_key_value_document(raw_text: str, *, document_type: str) -> dict[str, 
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     kv = _extract_key_values(lines)
 
-    patient_name = _kv_lookup(kv, "patient_name")
-    report_date = _kv_lookup(kv, "report_date")
-    hospital_name = _kv_lookup(kv, "hospital_name")
-    doctor_name = _kv_lookup(kv, "doctor_name")
+    patient_name = _kv_lookup(kv, "patient_name") or _line_alias_lookup(lines, "patient_name")
+    report_date = _kv_lookup(kv, "report_date") or _line_alias_lookup(lines, "report_date")
+    hospital_name = _kv_lookup(kv, "hospital_name") or _line_alias_lookup(lines, "hospital_name")
+    doctor_name = _kv_lookup(kv, "doctor_name") or _line_alias_lookup(lines, "doctor_name")
 
     fields: dict[str, Any] = {
         "tests": [],
@@ -249,7 +285,7 @@ def parse_key_value_document(raw_text: str, *, document_type: str) -> dict[str, 
         "report_date": report_date,
         "hospital_name": hospital_name,
         "doctor_name": doctor_name,
-        "notes": _kv_lookup(kv, "clinical_note"),
+        "notes": _kv_lookup(kv, "clinical_note") or _line_alias_lookup(lines, "clinical_note"),
         "document_fields": [],
     }
 
