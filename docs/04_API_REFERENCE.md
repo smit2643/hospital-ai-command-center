@@ -4,18 +4,15 @@ Base path: `/api/v1`
 
 ## Health
 - `GET /health/`
-  - returns service status
 
 ## Session Auth
 - `POST /auth/login/`
-  - body: `email`, `password`
 - `POST /auth/logout/`
 - `GET /auth/me/`
 
 ## Doctors
 - `GET /doctors/pending/` (admin)
 - `POST /doctors/{profile_id}/approval/` (admin)
-  - body: `decision` = `APPROVED` or `REJECTED`
 
 ## Documents
 - `GET /documents/`
@@ -36,3 +33,7 @@ Base path: `/api/v1`
 
 ## Audit
 - `GET /audit-logs/` (admin)
+
+## Web-only OCR Status Endpoint
+Used by template polling (not under `/api/v1`):
+- `GET /documents/{id}/ocr/status/`

@@ -33,9 +33,12 @@ A competition-ready hospital management platform built with Django, PostgreSQL, 
 - Admin doctor approval queue
 - Patient-doctor assignment
 - Document versioning and metadata tracking
-- OCR extraction for lab-report style image documents
+- OCR extraction with document-type-aware schema mapping
+- Relational OCR storage (`DocumentExtraction`, `DocumentExtractedField`, `DocumentLabTest`)
 - Signature request by email via secure token links
 - OCR review console with editable extracted fields before final save
+- Live OCR status updates on review page (auto-refresh on completion)
+- Full OCR text fallback retained for unmatched extracted values
 - Optional send-for-signature from OCR review screen
 - Public sign endpoint with expiration guard
 - Signed PDF artifact storage and hash persistence
@@ -91,6 +94,7 @@ A competition-ready hospital management platform built with Django, PostgreSQL, 
 - `/documents/upload/`
 - `/patients/<id>/documents/`
 - `/documents/<id>/ocr/trigger/`
+- `/documents/<id>/ocr/status/`
 - `/signatures/request/<document_id>/`
 - `/sign/<token>/`
 - `/health/`

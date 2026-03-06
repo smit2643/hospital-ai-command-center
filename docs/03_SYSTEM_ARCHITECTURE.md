@@ -1,12 +1,12 @@
 # System Architecture
 
 ## High-Level Architecture
-- Frontend: Django templates + JS interactions
+- Frontend: Django templates + JS polling interactions
 - API: Django REST Framework (`/api/v1`)
 - Core app: Django 5
 - Database: PostgreSQL
 - Async: Celery workers + Redis broker
-- OCR: Tesseract + OpenCV preprocessing + parser
+- OCR: Tesseract + OpenCV preprocessing + schema-aware parser
 - Signature: ReportLab PDF artifact generation + SHA-256 hashing
 
 ## Service Boundaries
@@ -20,7 +20,11 @@
 - profile and doctor assignment mapping
 
 4. Documents
-- upload/versioning/OCR trigger/result persistence
+- upload/versioning/OCR task orchestration
+- structured extraction storage:
+  - `DocumentExtraction` (core fields)
+  - `DocumentExtractedField` (dynamic per document type)
+  - `DocumentLabTest` (structured test rows)
 
 5. Signatures
 - request creation, tokenized signing, artifact lifecycle
@@ -29,11 +33,11 @@
 - audit logs, health endpoints, shared permission helpers
 
 ## Request and Task Flow
-1. Sync web request handles user action
-2. DB persists initial state
-3. Async worker processes OCR/email tasks
-4. State transition updates status fields
-5. UI/API reflects progression and results
+1. Upload request persists `PatientDocument` metadata.
+2. OCR task runs async, extracts raw text, parses schema fields, runs identity verification.
+3. Results persist to relational extraction models.
+4. OCR review page auto-polls status and refreshes when OCR completes.
+5. Reviewer edits and saves; optional signature request triggers email dispatch.
 
 ## Deployment Topology (Docker)
 - `web`: Django + gunicorn

@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.forms import formset_factory
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from apps.core.permissions import doctor_can_access_patient, require_role
@@ -81,6 +82,51 @@ def trigger_ocr(request, document_id: int):
     return redirect("documents:ocr_result", document_id=document.id)
 
 
+@login_required
+def ocr_status(request, document_id: int):
+    document = get_object_or_404(PatientDocument.objects.select_related("patient"), id=document_id)
+    if not doctor_can_access_patient(request.user, document.patient):
+        require_role(request.user, request.user.Role.ADMIN)
+
+    extraction = getattr(document, "extraction", None)
+    latest_result = document.ocr_results.first()
+    payload = {
+        "document_id": document.id,
+        "ocr_status": document.ocr_status,
+        "confidence": document.extracted_confidence,
+        "signature_status": document.signature_status,
+        "latest_error": latest_result.parsed_fields.get("error", "") if latest_result else "",
+        "raw_text": latest_result.raw_text if latest_result else "",
+        "extraction": {
+            "identity_verified": extraction.identity_verified if extraction else False,
+            "identity_message": extraction.identity_message if extraction else "",
+            "report_date_text": extraction.report_date_text if extraction else "",
+            "hospital_name": extraction.hospital_name if extraction else "",
+            "doctor_name": extraction.doctor_name if extraction else "",
+            "notes": extraction.notes if extraction else "",
+            "extra_fields": [
+                {
+                    "field_key": row.field_key,
+                    "value_type": row.value_type,
+                    "value_short": row.value_short,
+                    "value_text": row.value_text,
+                }
+                for row in extraction.extra_fields.all()
+            ] if extraction else [],
+            "tests": [
+                {
+                    "test_name": row.test_name,
+                    "value": row.value,
+                    "unit": row.unit,
+                    "reference_range": row.reference_range,
+                }
+                for row in extraction.tests.all()
+            ] if extraction else [],
+        },
+    }
+    return JsonResponse(payload)
+
+
 def _dynamic_fields_initial(document: PatientDocument, extraction) -> list[dict]:
     if extraction and extraction.extra_fields.exists():
         return [
@@ -124,9 +170,18 @@ def ocr_result(request, document_id: int):
     latest_signature_request = document.signature_requests.order_by("-created_at").first()
 
     extraction = getattr(document, "extraction", None)
-    if extraction is None:
-        parsed_source = latest_result.parsed_fields if latest_result else {}
-        extraction = upsert_extraction_from_parsed(document, parsed_source, raw_text=latest_result.raw_text if latest_result else "")
+    # Always sync extraction with the latest OCR payload when OCR result is newer.
+    # This prevents stale/blank fields in UI after OCR re-runs.
+    if latest_result and (extraction is None or latest_result.created_at > extraction.updated_at):
+        extraction = upsert_extraction_from_parsed(
+            document,
+            latest_result.parsed_fields,
+            raw_text=latest_result.raw_text or "",
+            identity_verified=getattr(extraction, "identity_verified", False),
+            identity_message=getattr(extraction, "identity_message", ""),
+        )
+    elif extraction is None:
+        extraction = upsert_extraction_from_parsed(document, {}, raw_text="")
 
     lab_extra = 1 if document.document_type == PatientDocument.DocumentType.LAB_REPORT else 0
     LabTestFormSet = formset_factory(OCRLabTestForm, extra=lab_extra)
@@ -281,5 +336,7 @@ def ocr_result(request, document_id: int):
         "extraction": extraction,
         "is_lab_report": document.document_type == PatientDocument.DocumentType.LAB_REPORT,
         "latest_error": (latest_result.parsed_fields.get("error", "") if latest_result else ""),
+        "ocr_status_url": f"/documents/{document.id}/ocr/status/",
+        "ocr_is_pending": document.ocr_status in {PatientDocument.OCRStatus.PENDING, PatientDocument.OCRStatus.PROCESSING},
     }
     return render(request, "documents/ocr_result.html", context)
