@@ -3,8 +3,8 @@
 <section class="reveal">
   <div class="page-head">
     <div>
-      <h1 class="page-title">OCR Intelligence Panel</h1>
-      <p class="page-subtitle">Document #{{ document.id }} | Status: {{ document.ocr_status }}</p>
+      <h1 class="page-title">OCR Intelligence + Clinical Review</h1>
+      <p class="page-subtitle">Document #{{ document.id }} | Type: {{ document.get_document_type_display }} | Patient: {{ document.patient.user.full_name }}</p>
     </div>
     <a class="btn btn-outline-primary" href="/documents/{{ document.id }}/ocr/trigger/">Re-run OCR</a>
   </div>
@@ -15,34 +15,139 @@
       <div class="metric-value">{{ document.extracted_confidence }}%</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">Document Type</div>
-      <div class="metric-value" style="font-size:1rem">{{ document.get_document_type_display }}</div>
+      <div class="metric-label">Identity Check</div>
+      <div class="metric-value" style="font-size:1rem">{% if extraction.identity_verified %}VERIFIED{% else %}NOT VERIFIED{% endif %}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Signature Status</div>
+      <div class="metric-value" style="font-size:1rem">{{ document.signature_status }}</div>
     </div>
   </div>
 
-  {% if document.extracted_confidence < 65 %}
-    <div class="alert alert-warning">Low confidence extraction. Manual verification recommended before downstream use.</div>
+  {% if latest_error %}
+    <div class="alert alert-danger">{{ latest_error }}</div>
+  {% endif %}
+  {% if extraction.identity_message %}
+    <div class="alert {% if extraction.identity_verified %}alert-success{% else %}alert-warning{% endif %}">{{ extraction.identity_message }}</div>
   {% endif %}
 
   <div class="row g-3">
     <div class="col-lg-6">
       <div class="glass p-3 h-100">
-        <h2 class="h5">Parsed Fields</h2>
-        {% if latest_result %}
-          <pre>{{ latest_result.parsed_fields }}</pre>
-        {% else %}
-          <p>No parsed output yet.</p>
-        {% endif %}
-      </div>
-    </div>
-    <div class="col-lg-6">
-      <div class="glass p-3 h-100">
-        <h2 class="h5">Raw OCR Text</h2>
+        <h2 class="h5">Raw OCR Output</h2>
         {% if latest_result %}
           <pre>{{ latest_result.raw_text }}</pre>
         {% else %}
-          <p>No OCR text available.</p>
+          <p>No OCR result yet. Run OCR first.</p>
         {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="glass p-3 h-100 form-shell">
+        <h2 class="h5">Editable Extraction</h2>
+        <form method="post">
+          {% csrf_token %}
+          {{ form.non_field_errors }}
+
+          <h3 class="h6 mb-2">Matched Patient Identity</h3>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label for="id_patient_name">Patient Name</label>
+              {{ form.patient_name }}
+            </div>
+            <div class="col-md-6">
+              <label for="id_patient_email">Patient Email</label>
+              {{ form.patient_email }}
+            </div>
+            <div class="col-md-6">
+              <label for="id_patient_phone">Patient Phone</label>
+              {{ form.patient_phone }}
+            </div>
+            <div class="col-md-6">
+              <label for="id_patient_dob_text">Patient DOB</label>
+              {{ form.patient_dob_text }}
+            </div>
+          </div>
+
+          <hr class="my-3" />
+          <h3 class="h6 mb-2">Core Document Fields</h3>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label for="id_report_date_text">Report Date</label>
+              {{ form.report_date_text }}
+            </div>
+            <div class="col-md-6">
+              <label for="id_hospital_name">Hospital</label>
+              {{ form.hospital_name }}
+            </div>
+            <div class="col-md-6">
+              <label for="id_doctor_name">Doctor</label>
+              {{ form.doctor_name }}
+            </div>
+            <div class="col-12">
+              <label for="id_notes">Notes</label>
+              {{ form.notes }}
+            </div>
+          </div>
+
+          <hr class="my-3" />
+          <h3 class="h6 mb-2">{{ document.get_document_type_display }} OCR Fields</h3>
+          {{ dynamic_formset.management_form }}
+          {% for dynamic_form in dynamic_formset %}
+            {{ dynamic_form.field_key }}{{ dynamic_form.label }}{{ dynamic_form.value_type }}
+            <div class="mb-2">
+              <label>{{ dynamic_form.display_label }}</label>
+              {% if dynamic_form.display_type == 'TEXT' %}
+                {{ dynamic_form.value_text }}
+              {% else %}
+                {{ dynamic_form.value_short }}
+              {% endif %}
+            </div>
+          {% endfor %}
+
+          {% if is_lab_report %}
+          <hr class="my-3" />
+          <h3 class="h6">Lab Test Values</h3>
+          {{ formset.management_form }}
+          <div class="table-wrap">
+            <table class="table mb-0">
+              <thead>
+                <tr><th>Test Name</th><th>Value</th><th>Unit</th><th>Reference Range</th><th>Remove</th></tr>
+              </thead>
+              <tbody>
+                {% for test_form in formset %}
+                <tr>
+                  <td>{{ test_form.test_name }}</td>
+                  <td>{{ test_form.value }}</td>
+                  <td>{{ test_form.unit }}</td>
+                  <td>{{ test_form.reference_range }}</td>
+                  <td>{{ test_form.DELETE }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+
+          <hr class="my-3" />
+          <div class="form-check mb-2">
+            {{ form.send_for_signature }}
+            <label class="form-check-label" for="id_send_for_signature">Send this document for patient signature</label>
+          </div>
+          <div class="mb-2">
+            <label for="id_signer_email">Signer Email</label>
+            {{ form.signer_email }}
+            {{ form.signer_email.errors }}
+          </div>
+
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <button class="btn btn-primary" type="submit">Save OCR Fields</button>
+            {% if latest_signature_request %}
+              <a class="btn btn-outline-success" href="/signatures/{{ latest_signature_request.id }}/status">Open Signature Status</a>
+            {% endif %}
+          </div>
+        </form>
       </div>
     </div>
   </div>

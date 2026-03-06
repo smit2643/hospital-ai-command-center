@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
+from apps.doctors.models import DoctorProfile
 from .models import User
 
 
@@ -15,6 +16,12 @@ class DoctorRegistrationForm(BaseRegistrationForm):
     specialization = forms.CharField(max_length=120)
     license_number = forms.CharField(max_length=120)
     years_experience = forms.IntegerField(min_value=0)
+
+    def clean_license_number(self):
+        license_number = self.cleaned_data["license_number"].strip()
+        if DoctorProfile.objects.filter(license_number__iexact=license_number).exists():
+            raise forms.ValidationError("A doctor with this license number is already registered.")
+        return license_number
 
 
 class PatientRegistrationForm(BaseRegistrationForm):

@@ -1,11 +1,19 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
+
 from apps.core.permissions import doctor_can_access_patient, require_role
 from apps.core.services import log_audit
 from apps.patients.models import PatientProfile
-from .forms import DocumentUploadForm
-from .models import PatientDocument
+from apps.signatures.models import SignatureRequest
+from apps.signatures.services import build_signature_expiry
+from apps.signatures.tasks import dispatch_signature_request_email
+
+from .forms import DocumentUploadForm, OCRDynamicFieldForm, OCRLabTestForm, OCRReviewForm
+from .models import DocumentExtractedField, DocumentLabTest, PatientDocument
+from .schema import get_schema_for_document_type
+from .services import mark_extraction_reviewed, upsert_extraction_from_parsed
 from .tasks import process_document_ocr
 
 
@@ -21,7 +29,7 @@ def upload(request):
                 return redirect("documents:upload")
 
             previous = (
-                PatientDocument.objects.filter(patient=patient, document_type=form.cleaned_data["document_type"])\
+                PatientDocument.objects.filter(patient=patient, document_type=form.cleaned_data["document_type"])
                 .order_by("-version")
                 .first()
             )
@@ -46,7 +54,8 @@ def upload(request):
             form.fields["patient"].queryset = PatientProfile.objects.filter(user=request.user)
         elif request.user.role == request.user.Role.DOCTOR:
             form.fields["patient"].queryset = PatientProfile.objects.filter(
-                assignments__doctor__user=request.user, assignments__is_active=True
+                assignments__doctor__user=request.user,
+                assignments__is_active=True,
             ).distinct()
     return render(request, "documents/upload.html", {"form": form})
 
@@ -57,7 +66,7 @@ def patient_documents(request, patient_id: int):
     if not doctor_can_access_patient(request.user, patient):
         require_role(request.user, request.user.Role.ADMIN)
 
-    docs = patient.documents.select_related("uploaded_by").all()
+    docs = patient.documents.select_related("uploaded_by").prefetch_related("signature_requests").all()
     return render(request, "documents/patient_documents.html", {"patient": patient, "documents": docs})
 
 
@@ -72,6 +81,39 @@ def trigger_ocr(request, document_id: int):
     return redirect("documents:ocr_result", document_id=document.id)
 
 
+def _dynamic_fields_initial(document: PatientDocument, extraction) -> list[dict]:
+    if extraction and extraction.extra_fields.exists():
+        return [
+            {
+                "field_key": row.field_key,
+                "label": row.label,
+                "value_type": row.value_type,
+                "value_short": row.value_short,
+                "value_text": row.value_text,
+            }
+            for row in extraction.extra_fields.all()
+        ]
+
+    initial = []
+    for spec in get_schema_for_document_type(document.document_type):
+        initial.append(
+            {
+                "field_key": spec["key"],
+                "label": spec["label"],
+                "value_type": spec["value_type"],
+                "value_short": "",
+                "value_text": "",
+            }
+        )
+    return initial
+
+
+def _decorate_dynamic_forms(dynamic_formset) -> None:
+    for form in dynamic_formset.forms:
+        form.display_label = form.initial.get("label") or form.data.get(form.add_prefix("label"), "Field")
+        form.display_type = form.initial.get("value_type") or form.data.get(form.add_prefix("value_type"), "SHORT")
+
+
 @login_required
 def ocr_result(request, document_id: int):
     document = get_object_or_404(PatientDocument.objects.select_related("patient__user"), id=document_id)
@@ -79,4 +121,165 @@ def ocr_result(request, document_id: int):
         require_role(request.user, request.user.Role.ADMIN)
 
     latest_result = document.ocr_results.first()
-    return render(request, "documents/ocr_result.html", {"document": document, "latest_result": latest_result})
+    latest_signature_request = document.signature_requests.order_by("-created_at").first()
+
+    extraction = getattr(document, "extraction", None)
+    if extraction is None:
+        parsed_source = latest_result.parsed_fields if latest_result else {}
+        extraction = upsert_extraction_from_parsed(document, parsed_source, raw_text=latest_result.raw_text if latest_result else "")
+
+    lab_extra = 1 if document.document_type == PatientDocument.DocumentType.LAB_REPORT else 0
+    LabTestFormSet = formset_factory(OCRLabTestForm, extra=lab_extra)
+    DynamicFieldFormSet = formset_factory(OCRDynamicFieldForm, extra=0)
+
+    initial_test_rows = []
+    if extraction and document.document_type == PatientDocument.DocumentType.LAB_REPORT:
+        initial_test_rows = [
+            {
+                "test_name": row.test_name,
+                "value": row.value,
+                "unit": row.unit,
+                "reference_range": row.reference_range,
+            }
+            for row in extraction.tests.all()
+        ]
+    if not initial_test_rows and document.document_type == PatientDocument.DocumentType.LAB_REPORT:
+        initial_test_rows = [{"test_name": "", "value": "", "unit": "", "reference_range": ""}]
+
+    if request.method == "POST":
+        form = OCRReviewForm(request.POST, instance=extraction)
+        formset = LabTestFormSet(request.POST, prefix="tests")
+        dynamic_formset = DynamicFieldFormSet(request.POST, prefix="dynamic")
+        _decorate_dynamic_forms(dynamic_formset)
+
+        all_valid = form.is_valid() and dynamic_formset.is_valid()
+        if document.document_type == PatientDocument.DocumentType.LAB_REPORT:
+            all_valid = all_valid and formset.is_valid()
+
+        if all_valid:
+            extraction = form.save(commit=False)
+            extraction.patient_name = document.patient.user.full_name
+            extraction.patient_email = document.patient.user.email
+            extraction.patient_phone = document.patient.user.phone
+            extraction.patient_dob_text = document.patient.dob.isoformat() if document.patient.dob else ""
+            extraction.save()
+
+            extraction.extra_fields.all().delete()
+            dynamic_rows = []
+            for idx, dynamic_form in enumerate(dynamic_formset):
+                key = dynamic_form.cleaned_data.get("field_key", "").strip()
+                label = dynamic_form.cleaned_data.get("label", "").strip()
+                value_type = dynamic_form.cleaned_data.get("value_type", "SHORT")
+                value_short = dynamic_form.cleaned_data.get("value_short", "").strip()
+                value_text = dynamic_form.cleaned_data.get("value_text", "").strip()
+                if value_type == DocumentExtractedField.ValueType.TEXT:
+                    dynamic_rows.append(
+                        DocumentExtractedField(
+                            extraction=extraction,
+                            field_key=key,
+                            label=label,
+                            value_type=value_type,
+                            value_short="",
+                            value_text=value_text,
+                            order_index=idx,
+                        )
+                    )
+                else:
+                    dynamic_rows.append(
+                        DocumentExtractedField(
+                            extraction=extraction,
+                            field_key=key,
+                            label=label,
+                            value_type=value_type,
+                            value_short=value_short,
+                            value_text="",
+                            order_index=idx,
+                        )
+                    )
+            if dynamic_rows:
+                DocumentExtractedField.objects.bulk_create(dynamic_rows)
+
+            if document.document_type == PatientDocument.DocumentType.LAB_REPORT:
+                extraction.tests.all().delete()
+                rows = []
+                for idx, test_form in enumerate(formset):
+                    if test_form.cleaned_data.get("DELETE"):
+                        continue
+                    if not test_form.row_has_data():
+                        continue
+                    rows.append(
+                        DocumentLabTest(
+                            extraction=extraction,
+                            test_name=test_form.cleaned_data["test_name"].strip(),
+                            value=test_form.cleaned_data["value"].strip(),
+                            unit=test_form.cleaned_data["unit"].strip(),
+                            reference_range=test_form.cleaned_data["reference_range"].strip(),
+                            order_index=idx,
+                        )
+                    )
+                if rows:
+                    DocumentLabTest.objects.bulk_create(rows)
+            else:
+                extraction.tests.all().delete()
+
+            mark_extraction_reviewed(extraction, request.user)
+
+            document.extracted_summary = {}
+            if document.ocr_status != PatientDocument.OCRStatus.DONE:
+                document.ocr_status = PatientDocument.OCRStatus.DONE
+            document.save(update_fields=["extracted_summary", "ocr_status", "updated_at"])
+
+            log_audit(
+                actor=request.user,
+                action="document.ocr_review_saved",
+                object_type="PatientDocument",
+                object_id=document.id,
+                metadata={"patient_id": document.patient_id, "document_type": document.document_type},
+            )
+
+            if form.cleaned_data.get("send_for_signature"):
+                already_open = document.signature_requests.filter(status__in=["SENT", "VIEWED"]).exists()
+                already_signed = document.signature_requests.filter(status="SIGNED").exists()
+                if not already_open and not already_signed:
+                    sign_request = SignatureRequest.objects.create(
+                        document=document,
+                        requester=request.user,
+                        signer_email=form.cleaned_data["signer_email"],
+                        expires_at=build_signature_expiry(),
+                    )
+                    sent, error = dispatch_signature_request_email(sign_request.id)
+                    log_audit(
+                        actor=request.user,
+                        action="signature.requested_from_ocr_review",
+                        object_type="SignatureRequest",
+                        object_id=sign_request.id,
+                        metadata={"document_id": document.id},
+                    )
+                    if sent:
+                        messages.success(request, "OCR details saved and signature request sent to patient email.")
+                    else:
+                        messages.warning(request, f"OCR details saved. Email failed: {error}")
+                else:
+                    messages.info(request, "OCR details saved. Signature already pending or completed.")
+            else:
+                messages.success(request, "OCR details reviewed and saved successfully.")
+
+            return redirect("documents:ocr_result", document_id=document.id)
+    else:
+        form = OCRReviewForm(instance=extraction, initial={"signer_email": document.patient.user.email})
+        formset = LabTestFormSet(initial=initial_test_rows, prefix="tests")
+        dynamic_formset = DynamicFieldFormSet(initial=_dynamic_fields_initial(document, extraction), prefix="dynamic")
+        _decorate_dynamic_forms(dynamic_formset)
+
+    context = {
+        "document": document,
+        "latest_result": latest_result,
+        "latest_signature_request": latest_signature_request,
+        "form": form,
+        "formset": formset,
+        "dynamic_formset": dynamic_formset,
+        "extraction": extraction,
+        "is_lab_report": document.document_type == PatientDocument.DocumentType.LAB_REPORT,
+        "latest_error": (latest_result.parsed_fields.get("error", "") if latest_result else ""),
+    }
+    return render(request, "documents/ocr_result.html", context)

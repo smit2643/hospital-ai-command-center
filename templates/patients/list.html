@@ -6,7 +6,12 @@
       <h1 class="page-title">Patient Hub</h1>
       <p class="page-subtitle">Search and manage patient records quickly.</p>
     </div>
-    <a class="btn btn-primary" href="/documents/upload/">Upload New Document</a>
+    <div class="d-flex gap-2">
+      {% if user.role == 'ADMIN' %}
+      <a class="btn btn-outline-primary" href="{% url 'patients:add' %}">Add Patient</a>
+      {% endif %}
+      <a class="btn btn-primary" href="/documents/upload/">Upload New Document</a>
+    </div>
   </div>
 
   <div class="glass p-3">

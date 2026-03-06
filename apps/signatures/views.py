@@ -7,7 +7,7 @@ from apps.documents.models import PatientDocument
 from .forms import SignatureRequestForm, SignatureSubmitForm
 from .models import SignatureRequest
 from .services import build_signature_expiry, finalize_signature, sign_request_expired
-from .tasks import send_signature_request_email
+from .tasks import dispatch_signature_request_email
 
 
 @login_required
@@ -26,7 +26,7 @@ def request_signature(request, document_id: int):
                 signer_email=form.cleaned_data["signer_email"],
                 expires_at=build_signature_expiry(),
             )
-            send_signature_request_email.delay(sign_request.id)
+            sent, error = dispatch_signature_request_email(sign_request.id)
             log_audit(
                 actor=request.user,
                 action="signature.requested",
@@ -34,7 +34,10 @@ def request_signature(request, document_id: int):
                 object_id=sign_request.id,
                 metadata={"document_id": document.id},
             )
-            messages.success(request, "Signature request sent")
+            if sent:
+                messages.success(request, "Signature request sent")
+            else:
+                messages.warning(request, f"Signature request created but email failed: {error}")
             return redirect("signatures:status", request_id=sign_request.id)
     else:
         form = SignatureRequestForm(initial={"signer_email": document.patient.user.email})
@@ -59,13 +62,14 @@ def sign_public(request, token):
         sign_request.save(update_fields=["status"])
 
     if request.method == "POST":
-        form = SignatureSubmitForm(request.POST)
+        form = SignatureSubmitForm(request.POST, request.FILES)
         if form.is_valid():
             artifact = finalize_signature(
                 sign_request=sign_request,
                 signature_type=form.cleaned_data["signature_type"],
                 typed_signature=form.cleaned_data.get("typed_signature", ""),
                 drawn_signature_data=form.cleaned_data.get("drawn_signature_data", ""),
+                uploaded_signature_file=form.cleaned_data.get("signature_image_file"),
                 ip_address=request.META.get("REMOTE_ADDR", ""),
                 user_agent=request.META.get("HTTP_USER_AGENT", ""),
             )
