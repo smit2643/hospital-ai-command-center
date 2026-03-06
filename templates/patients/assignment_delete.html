@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="glass p-4 form-shell reveal">
+  <h1 class="page-title h4">Remove Assignment</h1>
+  <p>Patient: {{ assignment.patient.user.full_name }}</p>
+  <p>Doctor: {{ assignment.doctor.user.full_name }}</p>
+  <form method="post">{% csrf_token %}
+    <button class="btn btn-danger" type="submit">Remove Assignment</button>
+    <a class="btn btn-outline-primary" href="{% url 'patients:detail' assignment.patient_id %}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

@@ -46,6 +46,10 @@
               <a class="btn btn-outline-primary btn-sm" href="{{ d.file.url }}">Open File</a>
               <a class="btn btn-outline-primary btn-sm" href="/documents/{{ d.id }}/ocr/trigger/">Run OCR</a>
               <a class="btn btn-outline-primary btn-sm" href="/documents/{{ d.id }}/ocr/result/">View OCR</a>
+              {% if can_manage_docs %}
+              <a class="btn btn-outline-secondary btn-sm" href="/documents/{{ d.id }}/edit/">Edit</a>
+              <a class="btn btn-outline-danger btn-sm" href="/documents/{{ d.id }}/delete/">Delete</a>
+              {% endif %}
               {% if not d.is_signed %}
               <a class="btn btn-outline-success btn-sm" href="/signatures/request/{{ d.id }}/">Request Signature</a>
               {% endif %}

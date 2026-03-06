@@ -20,6 +20,7 @@ A competition-ready hospital management platform built with Django, PostgreSQL, 
 - [Judging Criteria Mapping](docs/08_JUDGING_CRITERIA_MAPPING.md)
 - [Branching Strategy](docs/09_BRANCHING_STRATEGY.md)
 - [OCR Review + Signature Flow](docs/10_OCR_REVIEW_AND_SIGNATURE_FLOW.md)
+- [Admin + Patient Profile Enhancements](docs/11_ADMIN_AND_PATIENT_PROFILE_ENHANCEMENTS.md)
 
 ## Git Workflow
 - Default branch: `main`
@@ -32,7 +33,10 @@ A competition-ready hospital management platform built with Django, PostgreSQL, 
 - Doctor and patient registration
 - Admin doctor approval queue
 - Patient-doctor assignment
+- Admin assignment edit/remove controls
+- Complete patient profile (demographics, address, clinical context, insurance, emergency details)
 - Document versioning and metadata tracking
+- Admin document edit/delete controls
 - OCR extraction with document-type-aware schema mapping
 - Relational OCR storage (`DocumentExtraction`, `DocumentExtractedField`, `DocumentLabTest`)
 - Signature request by email via secure token links

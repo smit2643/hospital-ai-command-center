@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="glass p-4 form-shell reveal">
+  <div class="page-head mb-3">
+    <div>
+      <h1 class="page-title h3">Edit Document #{{ document.id }}</h1>
+      <p class="page-subtitle">Patient: {{ document.patient.user.full_name }}</p>
+    </div>
+  </div>
+  <form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-outline-primary" href="{% url 'documents:patient_docs' document.patient_id %}">Back</a>
+  </form>
+</section>
+{% endblock %}

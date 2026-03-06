@@ -9,6 +9,12 @@ class DocumentUploadForm(forms.ModelForm):
         fields = ["patient", "document_type", "file"]
 
 
+class DocumentManageForm(forms.ModelForm):
+    class Meta:
+        model = PatientDocument
+        fields = ["document_type", "status"]
+
+
 class OCRReviewForm(forms.ModelForm):
     send_for_signature = forms.BooleanField(required=False)
     signer_email = forms.EmailField(required=False)

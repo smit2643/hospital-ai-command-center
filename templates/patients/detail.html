@@ -1,18 +1,86 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="glass p-4 reveal">
+<section class="reveal">
   <div class="page-head">
     <div>
       <h1 class="page-title">{{ patient.user.full_name }}</h1>
-      <p class="page-subtitle">Patient detail and quick access links.</p>
+      <p class="page-subtitle">Complete patient profile, doctor assignments, and document controls.</p>
     </div>
-    <a class="btn btn-primary" href="/patients/{{ patient.id }}/documents/">Open Documents</a>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-primary" href="/patients/{{ patient.id }}/documents/">Open Documents</a>
+      {% if can_edit %}
+      <a class="btn btn-primary" href="/patients/{{ patient.id }}/assign-doctor/">Assign Doctor</a>
+      {% endif %}
+    </div>
   </div>
 
-  <div class="metric-grid">
+  <div class="metric-grid mb-3">
     <div class="metric-card"><div class="metric-label">Email</div><div class="metric-value" style="font-size:1rem">{{ patient.user.email }}</div></div>
-    <div class="metric-card"><div class="metric-label">Blood Group</div><div class="metric-value">{{ patient.blood_group|default:'-' }}</div></div>
-    <div class="metric-card"><div class="metric-label">Emergency Contact</div><div class="metric-value" style="font-size:1rem">{{ patient.emergency_contact|default:'-' }}</div></div>
+    <div class="metric-card"><div class="metric-label">Phone</div><div class="metric-value" style="font-size:1rem">{{ patient.user.phone|default:'-' }}</div></div>
+    <div class="metric-card"><div class="metric-label">Documents</div><div class="metric-value">{{ documents_count }}</div></div>
+    <div class="metric-card"><div class="metric-label">Signed Docs</div><div class="metric-value">{{ signed_documents_count }}</div></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="glass p-3 h-100">
+        <h2 class="h5">Patient Profile</h2>
+        <div class="table-wrap">
+          <table class="table mb-0">
+            <tbody>
+              <tr><th>DOB</th><td>{{ patient.dob|default:'-' }}</td><th>Gender</th><td>{{ patient.gender|default:'-' }}</td></tr>
+              <tr><th>Blood Group</th><td>{{ patient.blood_group|default:'-' }}</td><th>Marital Status</th><td>{{ patient.marital_status|default:'-' }}</td></tr>
+              <tr><th>Occupation</th><td>{{ patient.occupation|default:'-' }}</td><th>Country</th><td>{{ patient.country|default:'-' }}</td></tr>
+              <tr><th>City/State</th><td>{{ patient.city|default:'-' }} / {{ patient.state|default:'-' }}</td><th>Postal Code</th><td>{{ patient.postal_code|default:'-' }}</td></tr>
+              <tr><th>Address 1</th><td colspan="3">{{ patient.address_line1|default:'-' }}</td></tr>
+              <tr><th>Address 2</th><td colspan="3">{{ patient.address_line2|default:'-' }}</td></tr>
+              <tr><th>Allergies</th><td colspan="3">{{ patient.allergies|default:'-' }}</td></tr>
+              <tr><th>Chronic Conditions</th><td colspan="3">{{ patient.chronic_conditions|default:'-' }}</td></tr>
+              <tr><th>Current Medications</th><td colspan="3">{{ patient.current_medications|default:'-' }}</td></tr>
+              <tr><th>Insurance</th><td>{{ patient.insurance_provider|default:'-' }}</td><th>Policy</th><td>{{ patient.insurance_policy_number|default:'-' }}</td></tr>
+              <tr><th>Emergency Name</th><td>{{ patient.emergency_contact_name|default:'-' }}</td><th>Relation</th><td>{{ patient.emergency_contact_relation|default:'-' }}</td></tr>
+              <tr><th>Emergency Phone</th><td colspan="3">{{ patient.emergency_contact|default:'-' }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="glass p-3 h-100 form-shell">
+        <h2 class="h5">Assigned Doctors</h2>
+        <div class="table-wrap mb-3">
+          <table class="table mb-0">
+            <thead><tr><th>Doctor</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for a in assignments %}
+              <tr>
+                <td>{{ a.doctor.user.full_name }}</td>
+                <td>{% if a.is_active %}Active{% else %}Inactive{% endif %}</td>
+                <td class="d-flex gap-1">
+                  {% if can_edit %}
+                  <a class="btn btn-outline-primary btn-sm" href="{% url 'patients:assignment_edit' a.id %}">Edit</a>
+                  <a class="btn btn-outline-danger btn-sm" href="{% url 'patients:assignment_delete' a.id %}">Remove</a>
+                  {% endif %}
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="3">No doctor assignments.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if can_edit %}
+        <h3 class="h6">Edit Patient Profile</h3>
+        <form method="post">
+          {% csrf_token %}
+          {{ form.as_p }}
+          <button class="btn btn-primary" type="submit">Save Changes</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
   </div>
 </section>
 {% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="glass p-4 form-shell reveal">
+  <h1 class="page-title h4">Delete Document #{{ document.id }}</h1>
+  <p>Patient: {{ document.patient.user.full_name }}</p>
+  <p>This action cannot be undone.</p>
+  <form method="post">{% csrf_token %}
+    <button class="btn btn-danger" type="submit">Delete Document</button>
+    <a class="btn btn-outline-primary" href="{% url 'documents:patient_docs' document.patient_id %}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

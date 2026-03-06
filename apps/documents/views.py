@@ -11,7 +11,7 @@ from apps.signatures.models import SignatureRequest
 from apps.signatures.services import build_signature_expiry
 from apps.signatures.tasks import dispatch_signature_request_email
 
-from .forms import DocumentUploadForm, OCRDynamicFieldForm, OCRLabTestForm, OCRReviewForm
+from .forms import DocumentManageForm, DocumentUploadForm, OCRDynamicFieldForm, OCRLabTestForm, OCRReviewForm
 from .models import DocumentExtractedField, DocumentLabTest, PatientDocument
 from .schema import get_schema_for_document_type
 from .services import mark_extraction_reviewed, upsert_extraction_from_parsed
@@ -68,7 +68,11 @@ def patient_documents(request, patient_id: int):
         require_role(request.user, request.user.Role.ADMIN)
 
     docs = patient.documents.select_related("uploaded_by").prefetch_related("signature_requests").all()
-    return render(request, "documents/patient_documents.html", {"patient": patient, "documents": docs})
+    return render(
+        request,
+        "documents/patient_documents.html",
+        {"patient": patient, "documents": docs, "can_manage_docs": request.user.role == request.user.Role.ADMIN},
+    )
 
 
 @login_required
@@ -80,6 +84,35 @@ def trigger_ocr(request, document_id: int):
     process_document_ocr.delay(document.id)
     messages.success(request, "OCR started")
     return redirect("documents:ocr_result", document_id=document.id)
+
+
+@login_required
+def edit_document(request, document_id: int):
+    require_role(request.user, request.user.Role.ADMIN)
+    document = get_object_or_404(PatientDocument.objects.select_related("patient"), id=document_id)
+
+    if request.method == "POST":
+        form = DocumentManageForm(request.POST, instance=document)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Document updated.")
+            return redirect("documents:patient_docs", patient_id=document.patient_id)
+    else:
+        form = DocumentManageForm(instance=document)
+
+    return render(request, "documents/edit_document.html", {"document": document, "form": form})
+
+
+@login_required
+def delete_document(request, document_id: int):
+    require_role(request.user, request.user.Role.ADMIN)
+    document = get_object_or_404(PatientDocument.objects.select_related("patient"), id=document_id)
+    if request.method == "POST":
+        patient_id = document.patient_id
+        document.delete()
+        messages.success(request, "Document deleted.")
+        return redirect("documents:patient_docs", patient_id=patient_id)
+    return render(request, "documents/delete_document.html", {"document": document})
 
 
 @login_required
