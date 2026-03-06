@@ -191,6 +191,16 @@ def _decorate_dynamic_forms(dynamic_formset) -> None:
     for form in dynamic_formset.forms:
         form.display_label = form.initial.get("label") or form.data.get(form.add_prefix("label"), "Field")
         form.display_type = form.initial.get("value_type") or form.data.get(form.add_prefix("value_type"), "SHORT")
+        key = (form.initial.get("field_key") or form.data.get(form.add_prefix("field_key"), "")).strip().lower()
+        if form.is_bound:
+            value_short = (form.data.get(form.add_prefix("value_short")) or "").strip()
+            value_text = (form.data.get(form.add_prefix("value_text")) or "").strip()
+        else:
+            value_short = (form.initial.get("value_short") or "").strip()
+            value_text = (form.initial.get("value_text") or "").strip()
+        has_data = bool(value_short or value_text)
+        always_show = ("date" in key) or ("doctor" in key)
+        form.visible_row = has_data or always_show
 
 
 @login_required

@@ -29,6 +29,7 @@ FIELD_ALIASES = {
     "report_date": ["report date", "date", "test date"],
     "clinical_note": ["clinical note", "note", "remarks", "comment"],
     "lab_name": ["lab name", "laboratory", "pathology department"],
+    "patient_dob": ["dob", "date of birth", "birth date"],
 }
 
 
@@ -243,10 +244,9 @@ def extract_identity(raw_text: str) -> dict[str, str]:
     email_match = EMAIL_PATTERN.search(raw_text)
     phone_match = PHONE_PATTERN.search(raw_text)
 
-    dob_match = _find_line_value(lines, ("dob",)) or _find_line_value(lines, ("date", "birth"))
-    if not dob_match:
-        any_date = DATE_PATTERN.search(raw_text)
-        dob_match = any_date.group(1) if any_date else ""
+    dob_text = _kv_lookup(kv, "patient_dob") or _line_alias_lookup(lines, "patient_dob")
+    date_match = DATE_PATTERN.search(dob_text)
+    dob_match = date_match.group(1) if date_match else ""
 
     patient_name = _kv_lookup(kv, "patient_name") or _line_alias_lookup(lines, "patient_name") or _find_line_value(lines, ("patient", "name"))
 

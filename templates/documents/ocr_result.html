@@ -65,7 +65,7 @@
               {{ form.patient_phone }}
             </div>
             <div class="col-md-6">
-              <label for="id_patient_dob_text">Patient DOB</label>
+              <label for="id_patient_dob_text">Patient DOB (Profile)</label>
               {{ form.patient_dob_text }}
             </div>
           </div>
@@ -95,6 +95,7 @@
           <h3 class="h6 mb-2">{{ document.get_document_type_display }} OCR Fields</h3>
           {{ dynamic_formset.management_form }}
           {% for dynamic_form in dynamic_formset %}
+            {% if dynamic_form.visible_row %}
             {{ dynamic_form.field_key }}{{ dynamic_form.label }}{{ dynamic_form.value_type }}
             <div class="mb-2">
               <label>{{ dynamic_form.display_label }}</label>
@@ -104,6 +105,7 @@
                 {{ dynamic_form.value_short }}
               {% endif %}
             </div>
+            {% endif %}
           {% endfor %}
 
           {% if is_lab_report %}

@@ -3,7 +3,7 @@ from apps.accounts.models import User
 from apps.patients.models import PatientProfile
 
 from .models import PatientDocument
-from .ocr import parse_document, parse_lab_report
+from .ocr import extract_identity, parse_document, parse_lab_report
 from .services import upsert_extraction_from_parsed
 
 
@@ -107,3 +107,13 @@ class OCRParserTests(TestCase):
         self.assertIn("Ecosprin", field_map["medications"]["value_text"])
         self.assertIn("Low salt diet", field_map["instructions"]["value_text"])
         self.assertIn("follow up", field_map["follow_up"]["value_text"].lower())
+
+    def test_extract_identity_does_not_use_report_date_as_dob(self):
+        text = """
+        Patient Name: Ananya Roy
+        Report Date: 2026-03-05
+        Doctor: Dr. Vikram Sethi
+        """
+        identity = extract_identity(text)
+        self.assertEqual(identity["patient_name"], "Ananya Roy")
+        self.assertEqual(identity["patient_dob"], "")
