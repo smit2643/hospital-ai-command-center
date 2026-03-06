@@ -12,23 +12,23 @@
   <div class="metric-grid mb-3">
     <div class="metric-card">
       <div class="metric-label">OCR Confidence</div>
-      <div class="metric-value">{{ document.extracted_confidence }}%</div>
+      <div class="metric-value" id="ocr-confidence">{{ document.extracted_confidence }}%</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Identity Check</div>
-      <div class="metric-value" style="font-size:1rem">{% if extraction.identity_verified %}VERIFIED{% else %}NOT VERIFIED{% endif %}</div>
+      <div class="metric-value" style="font-size:1rem" id="identity-status">{% if extraction.identity_verified %}VERIFIED{% else %}NOT VERIFIED{% endif %}</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Signature Status</div>
-      <div class="metric-value" style="font-size:1rem">{{ document.signature_status }}</div>
+      <div class="metric-value" style="font-size:1rem" id="signature-status">{{ document.signature_status }}</div>
     </div>
   </div>
 
   {% if latest_error %}
-    <div class="alert alert-danger">{{ latest_error }}</div>
+    <div class="alert alert-danger" id="ocr-error">{{ latest_error }}</div>
   {% endif %}
   {% if extraction.identity_message %}
-    <div class="alert {% if extraction.identity_verified %}alert-success{% else %}alert-warning{% endif %}">{{ extraction.identity_message }}</div>
+    <div class="alert {% if extraction.identity_verified %}alert-success{% else %}alert-warning{% endif %}" id="identity-message">{{ extraction.identity_message }}</div>
   {% endif %}
 
   <div class="row g-3">
@@ -36,9 +36,9 @@
       <div class="glass p-3 h-100">
         <h2 class="h5">Raw OCR Output</h2>
         {% if latest_result %}
-          <pre>{{ latest_result.raw_text }}</pre>
+          <pre id="ocr-raw-text">{{ latest_result.raw_text }}</pre>
         {% else %}
-          <p>No OCR result yet. Run OCR first.</p>
+          <p id="ocr-raw-text">No OCR result yet. Run OCR first.</p>
         {% endif %}
       </div>
     </div>
@@ -152,4 +152,47 @@
     </div>
   </div>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    const shouldPoll = {{ ocr_is_pending|yesno:"true,false" }};
+    if (!shouldPoll) return;
+
+    const statusUrl = "{{ ocr_status_url }}";
+    const confidenceEl = document.getElementById("ocr-confidence");
+    const signatureEl = document.getElementById("signature-status");
+    const identityEl = document.getElementById("identity-status");
+    const rawTextEl = document.getElementById("ocr-raw-text");
+
+    let attempts = 0;
+    const maxAttempts = 120;
+
+    async function poll() {
+      attempts += 1;
+      try {
+        const res = await fetch(statusUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (confidenceEl) confidenceEl.textContent = `${data.confidence}%`;
+        if (signatureEl) signatureEl.textContent = data.signature_status;
+        if (identityEl) identityEl.textContent = data.extraction.identity_verified ? "VERIFIED" : "NOT VERIFIED";
+        if (rawTextEl && data.raw_text) rawTextEl.textContent = data.raw_text;
+
+        if (data.ocr_status === "DONE" || data.ocr_status === "FAILED") {
+          window.location.reload();
+          return;
+        }
+      } catch (e) {
+      }
+
+      if (attempts < maxAttempts) {
+        setTimeout(poll, 3000);
+      }
+    }
+
+    setTimeout(poll, 1000);
+  })();
+</script>
 {% endblock %}

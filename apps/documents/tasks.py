@@ -74,7 +74,7 @@ def _verify_patient_identity(document: PatientDocument, identity: dict) -> tuple
             return False, "Patient selected is wrong. Phone in document does not match selected patient."
 
     if secondary_checked == 0:
-        return False, "Patient verification failed: OCR did not detect email/dob/phone to validate selected patient."
+        return True, "Patient verified by name. Secondary identity fields (email/dob/phone) not found in OCR."
 
     if secondary_matched == 0:
         return False, "Patient selected is wrong combination of name, dob, email and phone."
