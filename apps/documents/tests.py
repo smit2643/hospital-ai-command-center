@@ -1,5 +1,10 @@
 from django.test import TestCase
+from apps.accounts.models import User
+from apps.patients.models import PatientProfile
+
+from .models import PatientDocument
 from .ocr import parse_lab_report
+from .services import upsert_extraction_from_parsed
 
 
 class OCRParserTests(TestCase):
@@ -42,3 +47,40 @@ class OCRParserTests(TestCase):
         parsed = result["parsed"]
         self.assertEqual(parsed["doctor_name"], "Dr. Aria Menon")
         self.assertEqual(parsed["hospital_name"], "City Care Multispecialty Hospital")
+
+    def test_upsert_maps_doctor_hospital_from_document_fields(self):
+        doctor = User.objects.create_user(
+            email="doc-map@example.com",
+            full_name="Doc Map",
+            role=User.Role.DOCTOR,
+            password="Secret123!",
+        )
+        patient_user = User.objects.create_user(
+            email="pat-map@example.com",
+            full_name="Pat Map",
+            role=User.Role.PATIENT,
+            password="Secret123!",
+        )
+        patient = PatientProfile.objects.create(user=patient_user)
+        document = PatientDocument.objects.create(
+            patient=patient,
+            uploaded_by=doctor,
+            file="patients/1/documents/map.png",
+            document_type=PatientDocument.DocumentType.LAB_REPORT,
+        )
+        parsed = {
+            "report_date": "2026-03-05",
+            "hospital_name": "",
+            "doctor_name": "",
+            "notes": "",
+            "document_fields": [
+                {"key": "lab_name", "value_short": "City Care Multispecialty Hospital"},
+                {"key": "ordering_doctor", "value_short": "Dr. Aria Menon"},
+                {"key": "findings_summary", "value_text": "Mild iron deficiency trend."},
+            ],
+            "tests": [],
+        }
+        extraction = upsert_extraction_from_parsed(document, parsed, raw_text="x")
+        self.assertEqual(extraction.hospital_name, "City Care Multispecialty Hospital")
+        self.assertEqual(extraction.doctor_name, "Dr. Aria Menon")
+        self.assertEqual(extraction.notes, "Mild iron deficiency trend.")

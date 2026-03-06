@@ -8,7 +8,7 @@ Deliver a crisp, high-confidence demo in 6-8 minutes.
 2. `docker compose up --build -d`
 3. `docker compose exec web python manage.py migrate`
 4. `docker compose exec web python manage.py seed_demo`
-5. open `http://localhost:8000`
+5. Open `http://localhost:8000`
 
 ## Script
 1. Admin login
@@ -16,20 +16,23 @@ Deliver a crisp, high-confidence demo in 6-8 minutes.
 - approve a pending doctor
 
 2. Doctor login
-- show assigned patient list
-- open patient documents
+- open assigned patient documents
 - upload lab report image
-- trigger OCR and display parsed output/confidence
+- trigger OCR
+- show live OCR completion without manual refresh
+- show doctor/hospital/patient/date + dynamic fields auto-filled
+- show `Full OCR Text` fallback retained for unmatched text
 
 3. Signature flow
-- send signature request
+- enable `send for signature` on OCR review page
+- submit and open signature status
 - open sign link as patient
-- draw/type signature
+- draw/type/upload signature
 - show signed PDF + SHA-256 hash
 
 4. Governance close
 - open audit logs
-- explain traceability and future scalability
+- explain traceability and extensibility
 
 ## Demo Credentials
 - Admin: `admin@hospitalai.local / DemoPass@123`

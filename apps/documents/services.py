@@ -85,6 +85,19 @@ def upsert_extraction_from_parsed(
 ) -> DocumentExtraction:
     extraction, _ = DocumentExtraction.objects.get_or_create(document=document)
     defaults = _patient_defaults(document)
+    document_fields = parsed.get("document_fields", []) if isinstance(parsed, dict) else []
+    doc_field_map = {}
+    if isinstance(document_fields, list):
+        for item in document_fields:
+            if not isinstance(item, dict):
+                continue
+            key = _clean_text(item.get("key"))
+            if not key:
+                continue
+            doc_field_map[key] = {
+                "value_short": _clean_text(item.get("value_short")),
+                "value_text": _clean_text(item.get("value_text")),
+            }
 
     extraction.patient_name = defaults["patient_name"]
     extraction.patient_email = defaults["patient_email"]
@@ -92,9 +105,19 @@ def upsert_extraction_from_parsed(
     extraction.patient_dob_text = defaults["patient_dob_text"]
 
     extraction.report_date_text = _clean_text(parsed.get("report_date"))
-    extraction.hospital_name = _clean_text(parsed.get("hospital_name"))
-    extraction.doctor_name = _clean_text(parsed.get("doctor_name"))
+    extraction.hospital_name = (
+        _clean_text(parsed.get("hospital_name"))
+        or doc_field_map.get("lab_name", {}).get("value_short", "")
+        or doc_field_map.get("lab_name", {}).get("value_text", "")
+    )
+    extraction.doctor_name = (
+        _clean_text(parsed.get("doctor_name"))
+        or doc_field_map.get("ordering_doctor", {}).get("value_short", "")
+        or doc_field_map.get("ordering_doctor", {}).get("value_text", "")
+    )
     extraction.notes = _clean_text(parsed.get("notes"))
+    if not extraction.notes:
+        extraction.notes = doc_field_map.get("findings_summary", {}).get("value_text", "")
     extraction.identity_verified = bool(identity_verified)
     extraction.identity_message = _clean_text(identity_message)
     extraction.is_reviewed = False
