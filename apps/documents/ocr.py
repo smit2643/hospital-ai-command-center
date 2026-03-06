@@ -82,9 +82,15 @@ def _normalize_key(value: str) -> str:
 def _extract_key_values(lines: list[str]) -> dict[str, str]:
     kv = {}
     for line in lines:
-        if ":" not in line:
+        raw = line.strip()
+        if not raw:
             continue
-        key, value = line.split(":", 1)
+        if ":" in raw:
+            key, value = raw.split(":", 1)
+        elif " - " in raw and len(raw.split(" - ", 1)[0].split()) <= 5:
+            key, value = raw.split(" - ", 1)
+        else:
+            continue
         norm_key = _normalize_key(key)
         kv[norm_key] = value.strip()
     return kv
@@ -185,6 +191,51 @@ def _parse_test_line(line: str) -> dict[str, str] | None:
     }
 
 
+def _find_facility_name(lines: list[str]) -> str:
+    for line in lines[:8]:
+        lower = line.lower()
+        if any(token in lower for token in ("hospital", "institute", "clinic", "medical center", "health center")):
+            return line.strip()
+    return ""
+
+
+def _extract_prescription_blocks(lines: list[str]) -> tuple[str, str, str]:
+    medications = []
+    advice_lines = []
+    follow_up = ""
+    in_rx = False
+
+    for line in lines:
+        stripped = line.strip()
+        lower = stripped.lower()
+        if not stripped:
+            continue
+
+        if lower.startswith("rx") or lower == "rx":
+            in_rx = True
+            continue
+
+        if lower.startswith("advice"):
+            in_rx = False
+            advice_value = stripped.split(":", 1)[-1].strip() if ":" in stripped else stripped
+            if advice_value:
+                advice_lines.append(advice_value)
+            follow_match = re.search(r"(follow\s*up[^.,;]*)", advice_value, flags=re.IGNORECASE)
+            if follow_match and not follow_up:
+                follow_up = follow_match.group(1).strip()
+            continue
+
+        if "follow up" in lower and not follow_up:
+            follow_up = stripped.split(":", 1)[-1].strip() if ":" in stripped else stripped
+
+        if in_rx:
+            item = re.sub(r"^\d+\)\s*", "", stripped)
+            if item:
+                medications.append(item)
+
+    return ("\n".join(medications).strip(), "\n".join(advice_lines).strip(), follow_up.strip())
+
+
 def extract_identity(raw_text: str) -> dict[str, str]:
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     kv = _extract_key_values(lines)
@@ -278,6 +329,13 @@ def parse_key_value_document(raw_text: str, *, document_type: str) -> dict[str, 
     report_date = _kv_lookup(kv, "report_date") or _line_alias_lookup(lines, "report_date")
     hospital_name = _kv_lookup(kv, "hospital_name") or _line_alias_lookup(lines, "hospital_name")
     doctor_name = _kv_lookup(kv, "doctor_name") or _line_alias_lookup(lines, "doctor_name")
+    if not hospital_name:
+        hospital_name = _find_facility_name(lines)
+    if not doctor_name:
+        for line in lines:
+            if line.strip().lower().startswith("dr."):
+                doctor_name = line.strip()
+                break
 
     fields: dict[str, Any] = {
         "tests": [],
@@ -290,14 +348,17 @@ def parse_key_value_document(raw_text: str, *, document_type: str) -> dict[str, 
     }
 
     if document_type == PatientDocument.DocumentType.PRESCRIPTION:
+        rx_text, advice_text, follow_up_text = _extract_prescription_blocks(lines)
         fields["document_fields"] = [
             {"key": "prescription_date", "value_short": _kv_lookup(kv, "prescription_date") or report_date},
-            {"key": "diagnosis", "value_text": kv.get("diagnosis", "")},
-            {"key": "medications", "value_text": kv.get("medications", "") or kv.get("medicine", "")},
-            {"key": "instructions", "value_text": kv.get("instructions", "")},
-            {"key": "follow_up", "value_text": kv.get("follow up", "")},
+            {"key": "diagnosis", "value_text": kv.get("diagnosis", "") or kv.get("provisional diagnosis", "")},
+            {"key": "medications", "value_text": kv.get("medications", "") or kv.get("medicine", "") or rx_text},
+            {"key": "instructions", "value_text": kv.get("instructions", "") or advice_text},
+            {"key": "follow_up", "value_text": kv.get("follow up", "") or follow_up_text},
             {"key": "raw_ocr_text", "value_text": raw_text},
         ]
+        if not fields["notes"]:
+            fields["notes"] = advice_text
     elif document_type == PatientDocument.DocumentType.DISCHARGE_SUMMARY:
         fields["document_fields"] = [
             {"key": "admission_date", "value_short": kv.get("admission date", "")},

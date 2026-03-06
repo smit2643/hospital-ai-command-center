@@ -3,7 +3,7 @@ from apps.accounts.models import User
 from apps.patients.models import PatientProfile
 
 from .models import PatientDocument
-from .ocr import parse_lab_report
+from .ocr import parse_document, parse_lab_report
 from .services import upsert_extraction_from_parsed
 
 
@@ -84,3 +84,26 @@ class OCRParserTests(TestCase):
         self.assertEqual(extraction.hospital_name, "City Care Multispecialty Hospital")
         self.assertEqual(extraction.doctor_name, "Dr. Aria Menon")
         self.assertEqual(extraction.notes, "Mild iron deficiency trend.")
+
+    def test_parse_prescription_with_rx_and_advice_blocks(self):
+        text = """
+        NOVA HEART INSTITUTE
+        Prescription
+        Patient Name: Ananya Roy
+        Age/Sex: 34/F
+        Date: 2026-03-05
+        Doctor: Dr. Vikram Sethi (Cardiology)
+        Rx:
+        1) Tab Ecosprin 75 mg - once daily after dinner - 30 days
+        2) Tab Atorvastatin 10 mg - once nightly - 30 days
+        3) Cap Omeprazole 20 mg - before breakfast - 14 days
+        Advice: Low salt diet, daily 30 min walk, follow up after 2 weeks.
+        """
+        result = parse_document(text, PatientDocument.DocumentType.PRESCRIPTION)
+        parsed = result["parsed"]
+        self.assertEqual(parsed["hospital_name"], "NOVA HEART INSTITUTE")
+        self.assertEqual(parsed["doctor_name"], "Dr. Vikram Sethi (Cardiology)")
+        field_map = {item["key"]: item for item in parsed["document_fields"]}
+        self.assertIn("Ecosprin", field_map["medications"]["value_text"])
+        self.assertIn("Low salt diet", field_map["instructions"]["value_text"])
+        self.assertIn("follow up", field_map["follow_up"]["value_text"].lower())

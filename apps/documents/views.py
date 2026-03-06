@@ -170,9 +170,18 @@ def ocr_result(request, document_id: int):
     latest_signature_request = document.signature_requests.order_by("-created_at").first()
 
     extraction = getattr(document, "extraction", None)
-    if extraction is None:
-        parsed_source = latest_result.parsed_fields if latest_result else {}
-        extraction = upsert_extraction_from_parsed(document, parsed_source, raw_text=latest_result.raw_text if latest_result else "")
+    # Always sync extraction with the latest OCR payload when OCR result is newer.
+    # This prevents stale/blank fields in UI after OCR re-runs.
+    if latest_result and (extraction is None or latest_result.created_at > extraction.updated_at):
+        extraction = upsert_extraction_from_parsed(
+            document,
+            latest_result.parsed_fields,
+            raw_text=latest_result.raw_text or "",
+            identity_verified=getattr(extraction, "identity_verified", False),
+            identity_message=getattr(extraction, "identity_message", ""),
+        )
+    elif extraction is None:
+        extraction = upsert_extraction_from_parsed(document, {}, raw_text="")
 
     lab_extra = 1 if document.document_type == PatientDocument.DocumentType.LAB_REPORT else 0
     LabTestFormSet = formset_factory(OCRLabTestForm, extra=lab_extra)
