@@ -15,9 +15,22 @@ class OCRReviewForm(forms.ModelForm):
 
     class Meta:
         model = DocumentExtraction
-        fields = ["patient_name", "report_date_text", "hospital_name", "doctor_name", "notes"]
+        fields = [
+            "patient_name",
+            "patient_email",
+            "patient_phone",
+            "patient_dob_text",
+            "report_date_text",
+            "hospital_name",
+            "doctor_name",
+            "notes",
+        ]
         widgets = {
             "notes": forms.Textarea(attrs={"rows": 3}),
+            "patient_name": forms.TextInput(attrs={"readonly": "readonly"}),
+            "patient_email": forms.EmailInput(attrs={"readonly": "readonly"}),
+            "patient_phone": forms.TextInput(attrs={"readonly": "readonly"}),
+            "patient_dob_text": forms.TextInput(attrs={"readonly": "readonly"}),
         }
 
     def clean(self):
@@ -37,3 +50,11 @@ class OCRLabTestForm(forms.Form):
     def row_has_data(self) -> bool:
         cleaned = getattr(self, "cleaned_data", {})
         return any(cleaned.get(field) for field in ("test_name", "value", "unit", "reference_range"))
+
+
+class OCRDynamicFieldForm(forms.Form):
+    field_key = forms.CharField(widget=forms.HiddenInput())
+    label = forms.CharField(widget=forms.HiddenInput())
+    value_type = forms.CharField(widget=forms.HiddenInput())
+    value_short = forms.CharField(required=False, max_length=255)
+    value_text = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))

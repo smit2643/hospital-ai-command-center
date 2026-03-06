@@ -4,7 +4,7 @@
   <div class="page-head">
     <div>
       <h1 class="page-title">OCR Intelligence + Clinical Review</h1>
-      <p class="page-subtitle">Document #{{ document.id }} | Patient: {{ document.patient.user.full_name }} | OCR: {{ document.ocr_status }}</p>
+      <p class="page-subtitle">Document #{{ document.id }} | Type: {{ document.get_document_type_display }} | Patient: {{ document.patient.user.full_name }}</p>
     </div>
     <a class="btn btn-outline-primary" href="/documents/{{ document.id }}/ocr/trigger/">Re-run OCR</a>
   </div>
@@ -15,17 +15,20 @@
       <div class="metric-value">{{ document.extracted_confidence }}%</div>
     </div>
     <div class="metric-card">
+      <div class="metric-label">Identity Check</div>
+      <div class="metric-value" style="font-size:1rem">{% if extraction.identity_verified %}VERIFIED{% else %}NOT VERIFIED{% endif %}</div>
+    </div>
+    <div class="metric-card">
       <div class="metric-label">Signature Status</div>
       <div class="metric-value" style="font-size:1rem">{{ document.signature_status }}</div>
     </div>
-    <div class="metric-card">
-      <div class="metric-label">Review State</div>
-      <div class="metric-value" style="font-size:1rem">{% if extraction and extraction.is_reviewed %}REVIEWED{% else %}PENDING{% endif %}</div>
-    </div>
   </div>
 
-  {% if document.extracted_confidence < 65 %}
-    <div class="alert alert-warning">Low confidence extraction detected. Confirm fields before final save.</div>
+  {% if latest_error %}
+    <div class="alert alert-danger">{{ latest_error }}</div>
+  {% endif %}
+  {% if extraction.identity_message %}
+    <div class="alert {% if extraction.identity_verified %}alert-success{% else %}alert-warning{% endif %}">{{ extraction.identity_message }}</div>
   {% endif %}
 
   <div class="row g-3">
@@ -46,36 +49,66 @@
         <form method="post">
           {% csrf_token %}
           {{ form.non_field_errors }}
+
+          <h3 class="h6 mb-2">Matched Patient Identity</h3>
           <div class="row g-2">
             <div class="col-md-6">
               <label for="id_patient_name">Patient Name</label>
               {{ form.patient_name }}
-              {{ form.patient_name.errors }}
             </div>
             <div class="col-md-6">
-              <label for="id_report_date_text">Report Date</label>
-              {{ form.report_date_text }}
-              {{ form.report_date_text.errors }}
+              <label for="id_patient_email">Patient Email</label>
+              {{ form.patient_email }}
             </div>
             <div class="col-md-6">
-              <label for="id_hospital_name">Hospital</label>
-              {{ form.hospital_name }}
-              {{ form.hospital_name.errors }}
+              <label for="id_patient_phone">Patient Phone</label>
+              {{ form.patient_phone }}
             </div>
             <div class="col-md-6">
-              <label for="id_doctor_name">Doctor</label>
-              {{ form.doctor_name }}
-              {{ form.doctor_name.errors }}
-            </div>
-            <div class="col-12">
-              <label for="id_notes">Notes</label>
-              {{ form.notes }}
-              {{ form.notes.errors }}
+              <label for="id_patient_dob_text">Patient DOB</label>
+              {{ form.patient_dob_text }}
             </div>
           </div>
 
           <hr class="my-3" />
-          <h3 class="h6">Lab Tests</h3>
+          <h3 class="h6 mb-2">Core Document Fields</h3>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label for="id_report_date_text">Report Date</label>
+              {{ form.report_date_text }}
+            </div>
+            <div class="col-md-6">
+              <label for="id_hospital_name">Hospital</label>
+              {{ form.hospital_name }}
+            </div>
+            <div class="col-md-6">
+              <label for="id_doctor_name">Doctor</label>
+              {{ form.doctor_name }}
+            </div>
+            <div class="col-12">
+              <label for="id_notes">Notes</label>
+              {{ form.notes }}
+            </div>
+          </div>
+
+          <hr class="my-3" />
+          <h3 class="h6 mb-2">{{ document.get_document_type_display }} OCR Fields</h3>
+          {{ dynamic_formset.management_form }}
+          {% for dynamic_form in dynamic_formset %}
+            {{ dynamic_form.field_key }}{{ dynamic_form.label }}{{ dynamic_form.value_type }}
+            <div class="mb-2">
+              <label>{{ dynamic_form.display_label }}</label>
+              {% if dynamic_form.display_type == 'TEXT' %}
+                {{ dynamic_form.value_text }}
+              {% else %}
+                {{ dynamic_form.value_short }}
+              {% endif %}
+            </div>
+          {% endfor %}
+
+          {% if is_lab_report %}
+          <hr class="my-3" />
+          <h3 class="h6">Lab Test Values</h3>
           {{ formset.management_form }}
           <div class="table-wrap">
             <table class="table mb-0">
@@ -95,6 +128,7 @@
               </tbody>
             </table>
           </div>
+          {% endif %}
 
           <hr class="my-3" />
           <div class="form-check mb-2">

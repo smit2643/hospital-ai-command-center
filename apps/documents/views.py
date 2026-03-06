@@ -1,15 +1,18 @@
 from django.contrib import messages
-from django.forms import formset_factory
 from django.contrib.auth.decorators import login_required
+from django.forms import formset_factory
 from django.shortcuts import get_object_or_404, redirect, render
+
 from apps.core.permissions import doctor_can_access_patient, require_role
 from apps.core.services import log_audit
 from apps.patients.models import PatientProfile
 from apps.signatures.models import SignatureRequest
 from apps.signatures.services import build_signature_expiry
 from apps.signatures.tasks import dispatch_signature_request_email
-from .forms import DocumentUploadForm, OCRLabTestForm, OCRReviewForm
-from .models import DocumentLabTest, PatientDocument
+
+from .forms import DocumentUploadForm, OCRDynamicFieldForm, OCRLabTestForm, OCRReviewForm
+from .models import DocumentExtractedField, DocumentLabTest, PatientDocument
+from .schema import get_schema_for_document_type
 from .services import mark_extraction_reviewed, upsert_extraction_from_parsed
 from .tasks import process_document_ocr
 
@@ -26,7 +29,7 @@ def upload(request):
                 return redirect("documents:upload")
 
             previous = (
-                PatientDocument.objects.filter(patient=patient, document_type=form.cleaned_data["document_type"])\
+                PatientDocument.objects.filter(patient=patient, document_type=form.cleaned_data["document_type"])
                 .order_by("-version")
                 .first()
             )
@@ -51,7 +54,8 @@ def upload(request):
             form.fields["patient"].queryset = PatientProfile.objects.filter(user=request.user)
         elif request.user.role == request.user.Role.DOCTOR:
             form.fields["patient"].queryset = PatientProfile.objects.filter(
-                assignments__doctor__user=request.user, assignments__is_active=True
+                assignments__doctor__user=request.user,
+                assignments__is_active=True,
             ).distinct()
     return render(request, "documents/upload.html", {"form": form})
 
@@ -77,6 +81,39 @@ def trigger_ocr(request, document_id: int):
     return redirect("documents:ocr_result", document_id=document.id)
 
 
+def _dynamic_fields_initial(document: PatientDocument, extraction) -> list[dict]:
+    if extraction and extraction.extra_fields.exists():
+        return [
+            {
+                "field_key": row.field_key,
+                "label": row.label,
+                "value_type": row.value_type,
+                "value_short": row.value_short,
+                "value_text": row.value_text,
+            }
+            for row in extraction.extra_fields.all()
+        ]
+
+    initial = []
+    for spec in get_schema_for_document_type(document.document_type):
+        initial.append(
+            {
+                "field_key": spec["key"],
+                "label": spec["label"],
+                "value_type": spec["value_type"],
+                "value_short": "",
+                "value_text": "",
+            }
+        )
+    return initial
+
+
+def _decorate_dynamic_forms(dynamic_formset) -> None:
+    for form in dynamic_formset.forms:
+        form.display_label = form.initial.get("label") or form.data.get(form.add_prefix("label"), "Field")
+        form.display_type = form.initial.get("value_type") or form.data.get(form.add_prefix("value_type"), "SHORT")
+
+
 @login_required
 def ocr_result(request, document_id: int):
     document = get_object_or_404(PatientDocument.objects.select_related("patient__user"), id=document_id)
@@ -89,12 +126,14 @@ def ocr_result(request, document_id: int):
     extraction = getattr(document, "extraction", None)
     if extraction is None:
         parsed_source = latest_result.parsed_fields if latest_result else {}
-        if parsed_source:
-            extraction = upsert_extraction_from_parsed(document, parsed_source)
+        extraction = upsert_extraction_from_parsed(document, parsed_source, raw_text=latest_result.raw_text if latest_result else "")
 
-    LabTestFormSet = formset_factory(OCRLabTestForm, extra=1)
+    lab_extra = 1 if document.document_type == PatientDocument.DocumentType.LAB_REPORT else 0
+    LabTestFormSet = formset_factory(OCRLabTestForm, extra=lab_extra)
+    DynamicFieldFormSet = formset_factory(OCRDynamicFieldForm, extra=0)
+
     initial_test_rows = []
-    if extraction:
+    if extraction and document.document_type == PatientDocument.DocumentType.LAB_REPORT:
         initial_test_rows = [
             {
                 "test_name": row.test_name,
@@ -104,38 +143,85 @@ def ocr_result(request, document_id: int):
             }
             for row in extraction.tests.all()
         ]
-    elif latest_result and isinstance(latest_result.parsed_fields.get("tests"), list):
-        initial_test_rows = latest_result.parsed_fields.get("tests", [])
-
-    if not initial_test_rows:
+    if not initial_test_rows and document.document_type == PatientDocument.DocumentType.LAB_REPORT:
         initial_test_rows = [{"test_name": "", "value": "", "unit": "", "reference_range": ""}]
 
     if request.method == "POST":
-        if extraction is None:
-            extraction = upsert_extraction_from_parsed(document, {})
         form = OCRReviewForm(request.POST, instance=extraction)
         formset = LabTestFormSet(request.POST, prefix="tests")
-        if form.is_valid() and formset.is_valid():
-            extraction = form.save()
-            extraction.tests.all().delete()
-            rows = []
-            for idx, test_form in enumerate(formset):
-                if test_form.cleaned_data.get("DELETE"):
-                    continue
-                if not test_form.row_has_data():
-                    continue
-                rows.append(
-                    DocumentLabTest(
-                        extraction=extraction,
-                        test_name=test_form.cleaned_data["test_name"].strip(),
-                        value=test_form.cleaned_data["value"].strip(),
-                        unit=test_form.cleaned_data["unit"].strip(),
-                        reference_range=test_form.cleaned_data["reference_range"].strip(),
-                        order_index=idx,
+        dynamic_formset = DynamicFieldFormSet(request.POST, prefix="dynamic")
+        _decorate_dynamic_forms(dynamic_formset)
+
+        all_valid = form.is_valid() and dynamic_formset.is_valid()
+        if document.document_type == PatientDocument.DocumentType.LAB_REPORT:
+            all_valid = all_valid and formset.is_valid()
+
+        if all_valid:
+            extraction = form.save(commit=False)
+            extraction.patient_name = document.patient.user.full_name
+            extraction.patient_email = document.patient.user.email
+            extraction.patient_phone = document.patient.user.phone
+            extraction.patient_dob_text = document.patient.dob.isoformat() if document.patient.dob else ""
+            extraction.save()
+
+            extraction.extra_fields.all().delete()
+            dynamic_rows = []
+            for idx, dynamic_form in enumerate(dynamic_formset):
+                key = dynamic_form.cleaned_data.get("field_key", "").strip()
+                label = dynamic_form.cleaned_data.get("label", "").strip()
+                value_type = dynamic_form.cleaned_data.get("value_type", "SHORT")
+                value_short = dynamic_form.cleaned_data.get("value_short", "").strip()
+                value_text = dynamic_form.cleaned_data.get("value_text", "").strip()
+                if value_type == DocumentExtractedField.ValueType.TEXT:
+                    dynamic_rows.append(
+                        DocumentExtractedField(
+                            extraction=extraction,
+                            field_key=key,
+                            label=label,
+                            value_type=value_type,
+                            value_short="",
+                            value_text=value_text,
+                            order_index=idx,
+                        )
                     )
-                )
-            if rows:
-                DocumentLabTest.objects.bulk_create(rows)
+                else:
+                    dynamic_rows.append(
+                        DocumentExtractedField(
+                            extraction=extraction,
+                            field_key=key,
+                            label=label,
+                            value_type=value_type,
+                            value_short=value_short,
+                            value_text="",
+                            order_index=idx,
+                        )
+                    )
+            if dynamic_rows:
+                DocumentExtractedField.objects.bulk_create(dynamic_rows)
+
+            if document.document_type == PatientDocument.DocumentType.LAB_REPORT:
+                extraction.tests.all().delete()
+                rows = []
+                for idx, test_form in enumerate(formset):
+                    if test_form.cleaned_data.get("DELETE"):
+                        continue
+                    if not test_form.row_has_data():
+                        continue
+                    rows.append(
+                        DocumentLabTest(
+                            extraction=extraction,
+                            test_name=test_form.cleaned_data["test_name"].strip(),
+                            value=test_form.cleaned_data["value"].strip(),
+                            unit=test_form.cleaned_data["unit"].strip(),
+                            reference_range=test_form.cleaned_data["reference_range"].strip(),
+                            order_index=idx,
+                        )
+                    )
+                if rows:
+                    DocumentLabTest.objects.bulk_create(rows)
+            else:
+                extraction.tests.all().delete()
+
             mark_extraction_reviewed(extraction, request.user)
 
             document.extracted_summary = {}
@@ -148,7 +234,7 @@ def ocr_result(request, document_id: int):
                 action="document.ocr_review_saved",
                 object_type="PatientDocument",
                 object_id=document.id,
-                metadata={"patient_id": document.patient_id},
+                metadata={"patient_id": document.patient_id, "document_type": document.document_type},
             )
 
             if form.cleaned_data.get("send_for_signature"):
@@ -180,11 +266,10 @@ def ocr_result(request, document_id: int):
 
             return redirect("documents:ocr_result", document_id=document.id)
     else:
-        if extraction is None:
-            parsed = latest_result.parsed_fields if latest_result else {}
-            extraction = upsert_extraction_from_parsed(document, parsed)
         form = OCRReviewForm(instance=extraction, initial={"signer_email": document.patient.user.email})
         formset = LabTestFormSet(initial=initial_test_rows, prefix="tests")
+        dynamic_formset = DynamicFieldFormSet(initial=_dynamic_fields_initial(document, extraction), prefix="dynamic")
+        _decorate_dynamic_forms(dynamic_formset)
 
     context = {
         "document": document,
@@ -192,6 +277,9 @@ def ocr_result(request, document_id: int):
         "latest_signature_request": latest_signature_request,
         "form": form,
         "formset": formset,
+        "dynamic_formset": dynamic_formset,
         "extraction": extraction,
+        "is_lab_report": document.document_type == PatientDocument.DocumentType.LAB_REPORT,
+        "latest_error": (latest_result.parsed_fields.get("error", "") if latest_result else ""),
     }
     return render(request, "documents/ocr_result.html", context)
