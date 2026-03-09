@@ -242,6 +242,23 @@ def ocr_result(request, document_id: int):
     elif extraction is None:
         extraction = upsert_extraction_from_parsed(document, {}, raw_text="")
 
+    # Keep identity fields in OCR review in sync with latest patient profile edits.
+    expected_name = document.patient.user.full_name or ""
+    expected_email = document.patient.user.email or ""
+    expected_phone = document.patient.user.phone or ""
+    expected_dob = document.patient.dob.isoformat() if document.patient.dob else ""
+    if extraction and (
+        extraction.patient_name != expected_name
+        or extraction.patient_email != expected_email
+        or extraction.patient_phone != expected_phone
+        or extraction.patient_dob_text != expected_dob
+    ):
+        extraction.patient_name = expected_name
+        extraction.patient_email = expected_email
+        extraction.patient_phone = expected_phone
+        extraction.patient_dob_text = expected_dob
+        extraction.save(update_fields=["patient_name", "patient_email", "patient_phone", "patient_dob_text", "updated_at"])
+
     lab_extra = 1 if document.document_type == PatientDocument.DocumentType.LAB_REPORT else 0
     LabTestFormSet = formset_factory(OCRLabTestForm, extra=lab_extra)
     DynamicFieldFormSet = formset_factory(OCRDynamicFieldForm, extra=0)
