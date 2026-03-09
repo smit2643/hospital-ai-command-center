@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.forms import formset_factory
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+import re
 
 from apps.core.permissions import doctor_can_access_patient, require_role
 from apps.core.services import log_audit
@@ -22,6 +23,11 @@ from .tasks import process_document_ocr
 def upload(request):
     require_role(request.user, request.user.Role.ADMIN, request.user.Role.DOCTOR, request.user.Role.PATIENT)
     requested_patient_id = request.GET.get("patient")
+    if not requested_patient_id:
+        referer = request.META.get("HTTP_REFERER", "")
+        match = re.search(r"/patients/(\d+)/documents/?", referer)
+        if match:
+            requested_patient_id = match.group(1)
     preselected_patient = None
     if requested_patient_id:
         try:
