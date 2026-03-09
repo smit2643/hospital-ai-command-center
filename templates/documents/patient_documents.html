@@ -88,9 +88,9 @@
                 </div>
                 {% endfor %}
               </div>
-              {% if latest_summary.summary_data.summary_provider_requested == "gemini" and latest_summary.summary_data.summary_provider != "gemini" %}
+              {% if latest_summary.summary_data.summary_provider_requested and latest_summary.summary_data.summary_provider_requested != latest_summary.summary_data.summary_provider %}
               <div class="alert alert-warning mt-2 mb-0">
-                Gemini requested but fallback used: {{ latest_summary.summary_data.summary_provider_error|default:"unknown reason" }}
+                {{ latest_summary.summary_data.summary_provider_requested|title }} requested but fallback used: {{ latest_summary.summary_data.summary_provider_error|default:"unknown reason" }}
               </div>
               {% endif %}
               {% if latest_summary.summary_data.priority_flags %}

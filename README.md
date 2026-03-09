@@ -115,13 +115,16 @@ For local testing without SMTP:
 - Summary provider options:
   - `rule_based` (default, no API usage)
   - `gemini` (free-tier capable when API key is configured)
+  - `ollama` (local open-source LLM, no API billing)
 - Environment toggles:
-  - `SUMMARY_LLM_PROVIDER=rule_based|gemini`
+  - `SUMMARY_LLM_PROVIDER=rule_based|gemini|ollama`
   - `SUMMARY_GEMINI_MODEL=gemini-2.0-flash-lite` (single-model override)
   - `SUMMARY_GEMINI_MODELS=gemini-2.0-flash-lite,gemini-2.0-flash,gemini-1.5-flash` (auto fallback order)
   - `GEMINI_API_KEY=...` (required only for Gemini mode)
+  - `SUMMARY_OLLAMA_BASE_URL=http://ollama:11434`
+  - `SUMMARY_OLLAMA_MODEL=qwen2.5:0.5b`
 - Fallback behavior:
-  - If Gemini key/dependency/API call fails, system keeps rule-based summary generation.
+  - If requested LLM fails (`gemini` or `ollama`), system keeps rule-based summary generation and stores error reason in summary metadata/UI.
 - Abnormal test logic:
   - Numeric value is parsed from test value text.
   - Reference ranges like `12.0-16.0` / `70-100` / `12 to 16` are parsed safely.

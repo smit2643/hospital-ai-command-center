@@ -15,6 +15,15 @@ services:
     container_name: hospital_ai_redis
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: hospital_ai_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
   web:
     build: .
     container_name: hospital_ai_web
@@ -31,6 +40,7 @@ services:
     depends_on:
       - db
       - redis
+      - ollama
     ports:
       - "8000:8000"
     volumes:
@@ -51,9 +61,11 @@ services:
     depends_on:
       - db
       - redis
+      - ollama
     volumes:
       - .:/app
     command: celery -A hospital_ai worker -l info
 
 volumes:
   postgres_data:
+  ollama_data:

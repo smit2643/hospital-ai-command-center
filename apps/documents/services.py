@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 
 from django.utils import timezone
 
@@ -294,6 +296,57 @@ def _gemini_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | Non
     return parsed, ""
 
 
+def _ollama_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | None, str]:
+    base_url = os.getenv("SUMMARY_OLLAMA_BASE_URL", "http://ollama:11434").strip().rstrip("/")
+    model = os.getenv("SUMMARY_OLLAMA_MODEL", "qwen2.5:0.5b").strip()
+    endpoint = f"{base_url}/api/generate"
+    prompt = (
+        "You are a clinical summarization assistant.\n"
+        "Return only valid JSON with keys:\n"
+        '{'
+        '"doctor_ready_summary": "one concise sentence", '
+        '"doctor_ready_sections": ["short bullet 1", "short bullet 2"], '
+        '"priority_flags": ["flag 1", "flag 2"]'
+        "}\n"
+        "Constraints:\n"
+        "- Keep concise and doctor-friendly.\n"
+        "- Use only provided data.\n"
+        "- Mention timeline/trend direction when present.\n"
+        f"Patient: {patient_name}\n"
+        f"Data: {json.dumps(payload, ensure_ascii=True)}"
+    )
+    body = json.dumps(
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": 0.2},
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:  # noqa: S310
+            raw = resp.read().decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        return None, f"Ollama HTTP {exc.code}: {detail[:240]}"
+    except Exception as exc:  # noqa: BLE001
+        return None, f"Ollama call failed: {exc.__class__.__name__}"
+
+    envelope = _extract_json_from_text(raw)
+    response_text = str(envelope.get("response", "")).strip()
+    if not response_text:
+        return None, "Ollama response was empty"
+    parsed = _extract_json_from_text(response_text)
+    if not parsed:
+        return None, "Ollama response was not valid JSON"
+    if not parsed.get("doctor_ready_summary") or not isinstance(parsed.get("doctor_ready_sections"), list):
+        return None, "Ollama response missing required keys"
+    parsed["_meta_model"] = model
+    return parsed, ""
+
+
 def generate_patient_document_summary(patient, generated_by=None) -> PatientDocumentSummary:
     documents = (
         patient.documents.select_related("uploaded_by")
@@ -452,7 +505,7 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
     }
 
     llm_provider = os.getenv("SUMMARY_LLM_PROVIDER", "rule_based").strip().lower()
-    if llm_provider == "gemini":
+    if llm_provider in {"gemini", "ollama"}:
         llm_payload = {
             "abnormal_tests": abnormal_tests[:12],
             "medications": medications[:20],
@@ -463,10 +516,16 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             "document_type_breakdown": doc_types,
             "document_count": len(docs),
         }
-        llm_result, llm_error = _gemini_llm_summary(
-            patient_name=patient.user.full_name if getattr(patient, "user", None) else "",
-            payload=llm_payload,
-        )
+        if llm_provider == "gemini":
+            llm_result, llm_error = _gemini_llm_summary(
+                patient_name=patient.user.full_name if getattr(patient, "user", None) else "",
+                payload=llm_payload,
+            )
+        else:
+            llm_result, llm_error = _ollama_llm_summary(
+                patient_name=patient.user.full_name if getattr(patient, "user", None) else "",
+                payload=llm_payload,
+            )
         if llm_result:
             summary_data["doctor_ready_summary"] = str(llm_result.get("doctor_ready_summary", doctor_ready_summary)).strip()
             sections = llm_result.get("doctor_ready_sections", doctor_ready_sections)
@@ -475,13 +534,13 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             flags = llm_result.get("priority_flags", [])
             if isinstance(flags, list):
                 summary_data["priority_flags"] = [str(item).strip() for item in flags if str(item).strip()]
-            summary_data["summary_provider"] = "gemini"
+            summary_data["summary_provider"] = llm_provider
             summary_data["summary_model"] = str(llm_result.get("_meta_model", "")).strip()
             summary_text = summary_data["doctor_ready_summary"]
         else:
             summary_data["summary_provider"] = "rule_based"
-            summary_data["summary_provider_requested"] = "gemini"
-            summary_data["summary_provider_error"] = llm_error or "Gemini unavailable"
+            summary_data["summary_provider_requested"] = llm_provider
+            summary_data["summary_provider_error"] = llm_error or f"{llm_provider} unavailable"
 
     return PatientDocumentSummary.objects.create(
         patient=patient,
