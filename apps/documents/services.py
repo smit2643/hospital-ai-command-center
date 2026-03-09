@@ -208,6 +208,13 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
     return out
 
 
+def _extract_year(text: str, fallback_year: int) -> int:
+    match = re.search(r"(19|20)\d{2}", str(text or ""))
+    if match:
+        return int(match.group(0))
+    return fallback_year
+
+
 def generate_patient_document_summary(patient, generated_by=None) -> PatientDocumentSummary:
     documents = (
         patient.documents.select_related("uploaded_by")
@@ -224,6 +231,7 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
     timeline: list[dict] = []
     doc_types: dict[str, int] = {}
     ocr_done = 0
+    test_trend_map: dict[str, dict] = {}
 
     for document in docs:
         doc_types[document.document_type] = doc_types.get(document.document_type, 0) + 1
@@ -266,6 +274,27 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             for test in extraction.tests.all():
                 value = _to_float(test.value)
                 low, high = _range_bounds(test.reference_range)
+                report_year = _extract_year(extraction.report_date_text, fallback_year=document.created_at.year)
+
+                test_key = (test.test_name or "").strip().lower()
+                if test_key and value is not None:
+                    trend_bucket = test_trend_map.setdefault(
+                        test_key,
+                        {
+                            "test_name": test.test_name.strip(),
+                            "unit": (test.unit or "").strip(),
+                            "points": [],
+                        },
+                    )
+                    trend_bucket["points"].append(
+                        {
+                            "year": report_year,
+                            "value": value,
+                            "raw_value": test.value,
+                            "document_id": document.id,
+                        }
+                    )
+
                 if value is None or low is None or high is None:
                     continue
                 if value < low or value > high:
@@ -282,9 +311,23 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
     medications = _dedupe_keep_order(medications)
     diagnoses = _dedupe_keep_order(diagnoses)
     notes = _dedupe_keep_order(notes)
+    test_trends = []
+    for trend in test_trend_map.values():
+        points = sorted(trend["points"], key=lambda item: item["year"])
+        pretty = [f'{point["year"]} -> {point["raw_value"]}' for point in points]
+        test_trends.append(
+            {
+                "test_name": trend["test_name"],
+                "unit": trend["unit"],
+                "points": points,
+                "trend_text": "\n".join(pretty),
+            }
+        )
+    test_trends.sort(key=lambda item: item["test_name"].lower())
 
     if not docs:
         summary_text = "No documents are available for this patient yet."
+        doctor_ready_summary = "No records available to build a clinical summary."
     else:
         summary_text = (
             f"{len(docs)} document(s) processed, OCR complete for {ocr_done}. "
@@ -292,15 +335,36 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             f"{len(medications)} medication mention(s), and "
             f"{len(notes)} clinical note highlight(s) detected."
         )
+        doctor_ready_parts = [
+            f"Patient record consolidated from {len(docs)} uploaded document(s).",
+            f"OCR completed for {ocr_done} document(s).",
+        ]
+        if diagnoses:
+            doctor_ready_parts.append("Clinical diagnoses seen: " + "; ".join(diagnoses[:5]) + ".")
+        if medications:
+            doctor_ready_parts.append("Current/mentioned medications: " + "; ".join(medications[:6]) + ".")
+        if abnormal_tests:
+            markers = []
+            for item in abnormal_tests[:6]:
+                markers.append(f'{item["test_name"]} {item["value"]} {item["unit"]} (ref {item["reference_range"]})')
+            doctor_ready_parts.append("Abnormal markers requiring review: " + "; ".join(markers) + ".")
+        if notes:
+            doctor_ready_parts.append("Clinical note highlights: " + " ".join(notes[:3]))
+        if test_trends:
+            trend_names = ", ".join(row["test_name"] for row in test_trends[:6])
+            doctor_ready_parts.append(f"Trend-ready tests available: {trend_names}.")
+        doctor_ready_summary = " ".join(doctor_ready_parts)
 
     summary_data = {
         "document_count": len(docs),
         "ocr_done_count": ocr_done,
         "document_type_breakdown": doc_types,
+        "doctor_ready_summary": doctor_ready_summary,
         "abnormal_tests": abnormal_tests,
         "medications": medications[:20],
         "diagnoses": diagnoses[:20],
         "notes": notes[:10],
+        "test_trends": test_trends,
         "timeline": timeline,
     }
 

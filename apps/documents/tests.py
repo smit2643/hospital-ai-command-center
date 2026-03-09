@@ -231,13 +231,39 @@ class PatientSummaryTests(TestCase):
             ],
         }
         upsert_extraction_from_parsed(doc, parsed, raw_text="x")
+        doc2 = PatientDocument.objects.create(
+            patient=self.patient,
+            uploaded_by=self.doctor,
+            file="patients/1/documents/sum-lab-2.png",
+            document_type=PatientDocument.DocumentType.LAB_REPORT,
+            ocr_status=PatientDocument.OCRStatus.DONE,
+        )
+        parsed2 = {
+            "report_date": "2023-03-05",
+            "hospital_name": "City Care Multispecialty Hospital",
+            "doctor_name": "Dr. Aria Menon",
+            "notes": "Trend review suggested.",
+            "document_fields": [
+                {"key": "diagnosis", "value_text": "Iron deficiency"},
+                {"key": "medications", "value_text": "Tab Iron supplement 1 daily"},
+            ],
+            "tests": [
+                {"test_name": "Hemoglobin", "value": "11.2", "unit": "g/dL", "reference_range": "12.0-16.0"},
+            ],
+        }
+        upsert_extraction_from_parsed(doc2, parsed2, raw_text="y")
 
         summary = generate_patient_document_summary(self.patient, generated_by=self.doctor)
         self.assertIsInstance(summary, PatientDocumentSummary)
-        self.assertEqual(summary.source_document_count, 1)
+        self.assertEqual(summary.source_document_count, 2)
         self.assertIn("abnormal lab indicator(s)", summary.summary_text)
-        self.assertEqual(summary.summary_data["document_count"], 1)
-        self.assertEqual(len(summary.summary_data["abnormal_tests"]), 1)
+        self.assertEqual(summary.summary_data["document_count"], 2)
+        self.assertEqual(len(summary.summary_data["abnormal_tests"]), 2)
+        self.assertIn("doctor_ready_summary", summary.summary_data)
+        self.assertIn("Trend-ready tests available", summary.summary_data["doctor_ready_summary"])
+        trend_map = {item["test_name"]: item for item in summary.summary_data["test_trends"]}
+        self.assertIn("Hemoglobin", trend_map)
+        self.assertEqual(len(trend_map["Hemoglobin"]["points"]), 2)
 
     def test_patient_cannot_generate_summary(self):
         self.client.login(email=self.patient_user.email, password="Secret123!")

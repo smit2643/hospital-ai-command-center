@@ -71,6 +71,13 @@
       </div>
 
       <div class="row g-3">
+        <div class="col-12">
+          <div class="summary-card summary-card--doctor">
+            <h6>Doctor-Ready Summary</h6>
+            <p class="mb-0">{{ latest_summary.summary_data.doctor_ready_summary|default:"No summary generated." }}</p>
+          </div>
+        </div>
+
         <div class="col-lg-6">
           <div class="summary-card summary-card--abnormal">
             <h6>Abnormal Lab Indicators</h6>
@@ -115,6 +122,24 @@
               </ul>
             {% else %}
               <p class="mb-0 text-secondary">No clinical notes captured.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--trends">
+            <h6>Health History Timeline (Test Trends)</h6>
+            {% if latest_summary.summary_data.test_trends %}
+              <div class="summary-list">
+                {% for t in latest_summary.summary_data.test_trends|slice:":8" %}
+                <div class="summary-item">
+                  <div class="fw-semibold">{{ t.test_name }}{% if t.unit %} ({{ t.unit }}){% endif %}</div>
+                  <small style="white-space: pre-line;">{{ t.trend_text }}</small>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="mb-0 text-secondary">No longitudinal lab trends available yet.</p>
             {% endif %}
           </div>
         </div>

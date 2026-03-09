@@ -10,12 +10,13 @@ Production-style hospital workflow platform with role-based access, OCR-assisted
 5. OCR is run from the document review screen.
 6. Extracted values are shown as editable fields and can be saved.
 7. Admin/doctor can generate a patient-level summary across all uploaded documents.
-8. Summary renders as a structured intelligence board (not raw OCR dump): overview, abnormal tests, medications, notes, timeline.
-9. Summary headline is generated from structured `summary_data` for stable UI readability.
-10. From OCR review, user can `Save` or `Save + Send For Signature`.
-11. Patient receives signature email with secure tokenized link.
-12. Patient signs on the signing page (draw + place signature on document).
-13. Signed PDF is generated, stored, and downloadable from patient documents list.
+8. Summary renders as a structured intelligence board (not raw OCR dump): doctor-ready summary, abnormal tests, medications, notes, and timelines.
+9. System builds normalized year-wise medical test trends across documents (example: `Hemoglobin -> 2021: 11.2, 2022: 10.5, 2023: 9.1`).
+10. Summary headline is generated from structured `summary_data` for stable UI readability.
+11. From OCR review, user can `Save` or `Save + Send For Signature`.
+12. Patient receives signature email with secure tokenized link.
+13. Patient signs on the signing page (draw + place signature on document).
+14. Signed PDF is generated, stored, and downloadable from patient documents list.
 
 ## Role permissions (enforced in UI + backend)
 - `Admin`
@@ -35,7 +36,9 @@ Production-style hospital workflow platform with role-based access, OCR-assisted
 - Patient intelligence summary card (cross-document clinical snapshot).
 - Structured patient intelligence board with sections:
   - Executive headline (from `summary_data`)
+  - Doctor-ready consolidated summary
   - Abnormal lab indicators
+  - Health history timeline (year-wise test trends)
   - Medication mentions
   - Clinical notes highlights
   - Recent document timeline
@@ -108,11 +111,15 @@ For local testing without SMTP:
   - `DocumentExtractedField`
 - Stored output:
   - `summary_text` (concise executive sentence)
-  - `summary_data` (structured JSON for UI cards)
+  - `summary_data` (structured JSON for UI cards + doctor-ready narrative + trends)
 - Abnormal test logic:
   - Numeric value is parsed from test value text.
   - Reference ranges like `12.0-16.0` / `70-100` / `12 to 16` are parsed safely.
   - Test is marked abnormal only if value is outside `[low, high]`.
+- Timeline logic:
+  - Report year is taken from report date text when available.
+  - Otherwise document creation year is used as fallback.
+  - Numeric test values are grouped by test name and sorted year-wise.
 - UX note:
   - If old summary content is visible, click `Regenerate Summary` to rebuild using latest logic.
 

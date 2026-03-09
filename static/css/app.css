@@ -368,6 +368,8 @@ pre {
 .summary-card--meds { border-left: 4px solid #155dfc; }
 .summary-card--notes { border-left: 4px solid #0ea88a; }
 .summary-card--timeline { border-left: 4px solid #7c3aed; }
+.summary-card--doctor { border-left: 4px solid #e11d48; }
+.summary-card--trends { border-left: 4px solid #0f766e; }
 
 .summary-list {
   display: grid;
