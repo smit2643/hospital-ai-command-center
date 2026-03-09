@@ -117,7 +117,8 @@ For local testing without SMTP:
   - `gemini` (free-tier capable when API key is configured)
 - Environment toggles:
   - `SUMMARY_LLM_PROVIDER=rule_based|gemini`
-  - `SUMMARY_GEMINI_MODEL=gemini-1.5-flash` (optional override)
+  - `SUMMARY_GEMINI_MODEL=gemini-2.0-flash-lite` (single-model override)
+  - `SUMMARY_GEMINI_MODELS=gemini-2.0-flash-lite,gemini-2.0-flash,gemini-1.5-flash` (auto fallback order)
   - `GEMINI_API_KEY=...` (required only for Gemini mode)
 - Fallback behavior:
   - If Gemini key/dependency/API call fails, system keeps rule-based summary generation.

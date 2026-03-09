@@ -234,18 +234,27 @@ def _extract_json_from_text(raw: str) -> dict:
         return {}
 
 
-def _gemini_llm_summary(*, patient_name: str, payload: dict) -> dict | None:
+def _gemini_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | None, str]:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
-        return None
+        return None, "GEMINI_API_KEY not configured"
     try:
         import google.generativeai as genai  # type: ignore
-    except Exception:
-        return None
+    except Exception as exc:
+        return None, f"Gemini SDK missing: {exc.__class__.__name__}"
 
-    model_name = os.getenv("SUMMARY_GEMINI_MODEL", os.getenv("GEMINI_MODEL", "gemini-1.5-flash")).strip()
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name)
+    configured_single = os.getenv("SUMMARY_GEMINI_MODEL", os.getenv("GEMINI_MODEL", "")).strip()
+    configured_many = os.getenv("SUMMARY_GEMINI_MODELS", "").strip()
+    candidates = []
+    if configured_many:
+        candidates.extend([item.strip() for item in configured_many.split(",") if item.strip()])
+    if configured_single:
+        candidates.append(configured_single)
+    defaults = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"]
+    for item in defaults:
+        if item not in candidates:
+            candidates.append(item)
 
     prompt = (
         "You are a clinical summarization assistant.\n"
@@ -262,16 +271,27 @@ def _gemini_llm_summary(*, patient_name: str, payload: dict) -> dict | None:
         f"Patient: {patient_name}\n"
         f"Data: {json.dumps(payload, ensure_ascii=True)}"
     )
-    try:
-        response = model.generate_content(prompt)
-    except Exception:
-        return None
+    last_error = ""
+    response = None
+    chosen_model = ""
+    for model_name in candidates:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            chosen_model = model_name
+            break
+        except Exception as exc:
+            last_error = f"{model_name}: {exc.__class__.__name__}"
+            continue
+    if response is None:
+        return None, f"Gemini API call failed: {last_error or 'unknown'}"
     parsed = _extract_json_from_text(getattr(response, "text", "") or "")
     if not isinstance(parsed, dict):
-        return None
+        return None, "Gemini response was not valid JSON"
     if not parsed.get("doctor_ready_summary") or not isinstance(parsed.get("doctor_ready_sections"), list):
-        return None
-    return parsed
+        return None, "Gemini response missing required keys"
+    parsed["_meta_model"] = chosen_model
+    return parsed, ""
 
 
 def generate_patient_document_summary(patient, generated_by=None) -> PatientDocumentSummary:
@@ -443,7 +463,7 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             "document_type_breakdown": doc_types,
             "document_count": len(docs),
         }
-        llm_result = _gemini_llm_summary(
+        llm_result, llm_error = _gemini_llm_summary(
             patient_name=patient.user.full_name if getattr(patient, "user", None) else "",
             payload=llm_payload,
         )
@@ -456,7 +476,12 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             if isinstance(flags, list):
                 summary_data["priority_flags"] = [str(item).strip() for item in flags if str(item).strip()]
             summary_data["summary_provider"] = "gemini"
+            summary_data["summary_model"] = str(llm_result.get("_meta_model", "")).strip()
             summary_text = summary_data["doctor_ready_summary"]
+        else:
+            summary_data["summary_provider"] = "rule_based"
+            summary_data["summary_provider_requested"] = "gemini"
+            summary_data["summary_provider_error"] = llm_error or "Gemini unavailable"
 
     return PatientDocumentSummary.objects.create(
         patient=patient,
