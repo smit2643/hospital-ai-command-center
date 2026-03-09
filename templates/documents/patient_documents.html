@@ -59,7 +59,11 @@
       <div class="summary-header mb-3">
         <div class="summary-kicker">Executive Clinical Snapshot</div>
         <div class="summary-lead">
-          {{ latest_summary.summary_text }}
+          {{ latest_summary.summary_data.document_count|default:latest_summary.source_document_count }} document(s) processed,
+          OCR complete for {{ latest_summary.summary_data.ocr_done_count|default:0 }}.
+          {{ latest_summary.summary_data.abnormal_tests|length }} abnormal lab indicator(s),
+          {{ latest_summary.summary_data.medications|length }} medication mention(s),
+          and {{ latest_summary.summary_data.notes|length }} clinical note highlight(s) detected.
           <div class="mt-2">
             <small class="text-secondary">Use the cards below for detailed review by category.</small>
           </div>
