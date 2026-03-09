@@ -237,59 +237,10 @@ def _extract_json_from_text(raw: str) -> dict:
         return {}
 
 
-def _collect_project_md_content(max_chars: int = 8000) -> str:
-    """Walk BASE_DIR and collect text from all .md files up to *max_chars* total."""
-    try:
-        import django.conf  # type: ignore  # noqa: PLC0415
-        base_dir = str(django.conf.settings.BASE_DIR)
-    except Exception:  # noqa: BLE001
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-    collected: list[str] = []
-    total = 0
-    # Walk deterministically so results are stable across runs
-    for root, dirs, files in os.walk(base_dir):
-        # Skip hidden dirs, virtualenv, __pycache__, staticfiles, media
-        dirs[:] = sorted(
-            d for d in dirs
-            if not d.startswith(".") and d not in {"__pycache__", "staticfiles", "media", "node_modules", ".git"}
-        )
-        for fname in sorted(files):
-            if not fname.endswith(".md"):
-                continue
-            fpath = os.path.join(root, fname)
-            try:
-                with open(fpath, encoding="utf-8", errors="ignore") as fh:
-                    text = fh.read().strip()
-            except OSError:
-                continue
-            if not text:
-                continue
-            header = f"### {os.path.relpath(fpath, base_dir)}"
-            chunk = f"{header}\n{text}"
-            remaining = max_chars - total
-            if remaining <= 0:
-                break
-            if len(chunk) > remaining:
-                chunk = chunk[:remaining]
-            collected.append(chunk)
-            total += len(chunk)
-        if total >= max_chars:
-            break
-    return "\n\n".join(collected)
-
-
 def _ollama_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | None, str]:
     base_url = os.getenv("SUMMARY_OLLAMA_BASE_URL", "http://ollama:11434").strip().rstrip("/")
     model = os.getenv("SUMMARY_OLLAMA_MODEL", "qwen2.5:0.5b").strip()
     endpoint = f"{base_url}/api/generate"
-
-    # Build context from project .md files when present
-    md_context = payload.pop("project_context_md", "") or ""
-    context_block = (
-        "\nProject background (from documentation files):\n"
-        + md_context[:4000]  # hard-cap to stay within small-model context
-    ) if md_context else ""
 
     prompt = (
         "You are a clinical summarization assistant.\n"
@@ -303,9 +254,11 @@ def _ollama_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | Non
         "- Keep concise and doctor-friendly.\n"
         "- Use only provided patient data.\n"
         "- Mention timeline/trend direction when present.\n"
+        "- Do NOT include product/platform/architecture/security statements.\n"
+        "- Do NOT mention OCR stack, deployment, audit trail, or workflow internals.\n"
+        "- Focus only on clinical findings, medications, trends, and follow-up flags.\n"
         f"Patient: {patient_name}\n"
         f"Data: {json.dumps(payload, ensure_ascii=True)}"
-        f"{context_block}"
     )
     body = json.dumps(
         {
@@ -370,6 +323,25 @@ def _ollama_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | Non
         return None, f"Ollama response missing required keys (model: {model})"
     parsed["_meta_model"] = model
     return parsed, ""
+
+
+def _llm_summary_quality_ok(sections: list[str]) -> bool:
+    if len(sections) < 3:
+        return False
+    joined = " ".join(sections).lower()
+    banned = [
+        "ocr stack",
+        "deployment",
+        "audit trail",
+        "architecture",
+        "workflow",
+        "platform",
+    ]
+    if any(word in joined for word in banned):
+        return False
+    # Ensure minimum information density
+    token_count = len([tok for tok in joined.split() if tok.strip()])
+    return token_count >= 16
 
 
 def generate_patient_document_summary(patient, generated_by=None) -> PatientDocumentSummary:
@@ -541,25 +513,31 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             "document_type_breakdown": doc_types,
             "document_count": len(docs),
         }
-        if llm_provider == "ollama":
-            # Enrich the payload with content from all project .md files so the
-            # model has hospital-system context when writing the clinical summary.
-            llm_payload["project_context_md"] = _collect_project_md_content()
         llm_result, llm_error = _ollama_llm_summary(
             patient_name=patient.user.full_name if getattr(patient, "user", None) else "",
             payload=llm_payload,
         )
         if llm_result:
-            summary_data["doctor_ready_summary"] = str(llm_result.get("doctor_ready_summary", doctor_ready_summary)).strip()
+            candidate_summary = str(llm_result.get("doctor_ready_summary", doctor_ready_summary)).strip()
             sections = llm_result.get("doctor_ready_sections", doctor_ready_sections)
             if isinstance(sections, list):
-                summary_data["doctor_ready_sections"] = [str(item).strip() for item in sections if str(item).strip()]
-            flags = llm_result.get("priority_flags", [])
-            if isinstance(flags, list):
-                summary_data["priority_flags"] = [str(item).strip() for item in flags if str(item).strip()]
-            summary_data["summary_provider"] = llm_provider
-            summary_data["summary_model"] = str(llm_result.get("_meta_model", "")).strip()
-            summary_text = summary_data["doctor_ready_summary"]
+                cleaned_sections = [str(item).strip() for item in sections if str(item).strip()]
+            else:
+                cleaned_sections = doctor_ready_sections
+
+            if _llm_summary_quality_ok(cleaned_sections):
+                summary_data["doctor_ready_summary"] = candidate_summary
+                summary_data["doctor_ready_sections"] = cleaned_sections
+                flags = llm_result.get("priority_flags", [])
+                if isinstance(flags, list):
+                    summary_data["priority_flags"] = [str(item).strip() for item in flags if str(item).strip()]
+                summary_data["summary_provider"] = llm_provider
+                summary_data["summary_model"] = str(llm_result.get("_meta_model", "")).strip()
+                summary_text = summary_data["doctor_ready_summary"]
+            else:
+                summary_data["summary_provider"] = "rule_based"
+                summary_data["summary_provider_requested"] = llm_provider
+                summary_data["summary_provider_error"] = "Ollama output quality was too low; rule-based clinical summary used."
         else:
             summary_data["summary_provider"] = "rule_based"
             summary_data["summary_provider_requested"] = llm_provider
