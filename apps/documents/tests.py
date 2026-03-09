@@ -260,7 +260,7 @@ class PatientSummaryTests(TestCase):
         self.assertEqual(summary.summary_data["document_count"], 2)
         self.assertEqual(len(summary.summary_data["abnormal_tests"]), 2)
         self.assertIn("doctor_ready_summary", summary.summary_data)
-        self.assertIn("Trend-ready tests available", summary.summary_data["doctor_ready_summary"])
+        self.assertIn("Trend-ready tests:", summary.summary_data["doctor_ready_summary"])
         trend_map = {item["test_name"]: item for item in summary.summary_data["test_trends"]}
         self.assertIn("Hemoglobin", trend_map)
         self.assertEqual(len(trend_map["Hemoglobin"]["points"]), 2)

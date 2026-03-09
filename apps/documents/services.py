@@ -325,6 +325,7 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
         )
     test_trends.sort(key=lambda item: item["test_name"].lower())
 
+    doctor_ready_sections: list[str] = []
     if not docs:
         summary_text = "No documents are available for this patient yet."
         doctor_ready_summary = "No records available to build a clinical summary."
@@ -336,30 +337,32 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             f"{len(notes)} clinical note highlight(s) detected."
         )
         doctor_ready_parts = [
-            f"Patient record consolidated from {len(docs)} uploaded document(s).",
-            f"OCR completed for {ocr_done} document(s).",
+            f"Records consolidated: {len(docs)} document(s)",
+            f"OCR completed: {ocr_done} document(s)",
         ]
         if diagnoses:
-            doctor_ready_parts.append("Clinical diagnoses seen: " + "; ".join(diagnoses[:5]) + ".")
+            doctor_ready_parts.append("Diagnoses: " + "; ".join(diagnoses[:5]))
         if medications:
-            doctor_ready_parts.append("Current/mentioned medications: " + "; ".join(medications[:6]) + ".")
+            doctor_ready_parts.append("Medications: " + "; ".join(medications[:6]))
         if abnormal_tests:
             markers = []
             for item in abnormal_tests[:6]:
                 markers.append(f'{item["test_name"]} {item["value"]} {item["unit"]} (ref {item["reference_range"]})')
-            doctor_ready_parts.append("Abnormal markers requiring review: " + "; ".join(markers) + ".")
+            doctor_ready_parts.append("Abnormal markers: " + "; ".join(markers))
         if notes:
-            doctor_ready_parts.append("Clinical note highlights: " + " ".join(notes[:3]))
+            doctor_ready_parts.append("Clinical notes: " + " | ".join(notes[:3]))
         if test_trends:
             trend_names = ", ".join(row["test_name"] for row in test_trends[:6])
-            doctor_ready_parts.append(f"Trend-ready tests available: {trend_names}.")
-        doctor_ready_summary = " ".join(doctor_ready_parts)
+            doctor_ready_parts.append(f"Trend-ready tests: {trend_names}")
+        doctor_ready_summary = " | ".join(doctor_ready_parts)
+        doctor_ready_sections = doctor_ready_parts
 
     summary_data = {
         "document_count": len(docs),
         "ocr_done_count": ocr_done,
         "document_type_breakdown": doc_types,
         "doctor_ready_summary": doctor_ready_summary,
+        "doctor_ready_sections": doctor_ready_sections,
         "abnormal_tests": abnormal_tests,
         "medications": medications[:20],
         "diagnoses": diagnoses[:20],

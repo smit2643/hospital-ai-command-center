@@ -74,7 +74,17 @@
         <div class="col-12">
           <div class="summary-card summary-card--doctor">
             <h6>Doctor-Ready Summary</h6>
-            <p class="mb-0">{{ latest_summary.summary_data.doctor_ready_summary|default:"No summary generated." }}</p>
+            {% if latest_summary.summary_data.doctor_ready_sections %}
+              <div class="summary-list">
+                {% for row in latest_summary.summary_data.doctor_ready_sections %}
+                <div class="summary-item">
+                  <small>{{ row }}</small>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="mb-0 text-secondary">No summary generated.</p>
+            {% endif %}
           </div>
         </div>
 
