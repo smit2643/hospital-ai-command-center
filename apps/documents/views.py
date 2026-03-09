@@ -21,6 +21,14 @@ from .tasks import process_document_ocr
 @login_required
 def upload(request):
     require_role(request.user, request.user.Role.ADMIN, request.user.Role.DOCTOR, request.user.Role.PATIENT)
+    requested_patient_id = request.GET.get("patient")
+    preselected_patient = None
+    if requested_patient_id:
+        try:
+            preselected_patient = PatientProfile.objects.select_related("user").get(id=int(requested_patient_id))
+        except (ValueError, PatientProfile.DoesNotExist):
+            preselected_patient = None
+
     if request.method == "POST":
         form = DocumentUploadForm(request.POST, request.FILES)
         if form.is_valid():
@@ -58,6 +66,8 @@ def upload(request):
                 assignments__doctor__user=request.user,
                 assignments__is_active=True,
             ).distinct()
+        if preselected_patient and doctor_can_access_patient(request.user, preselected_patient):
+            form.fields["patient"].initial = preselected_patient.id
     return render(request, "documents/upload.html", {"form": form})
 
 
@@ -383,6 +393,8 @@ def ocr_result(request, document_id: int):
 
     context = {
         "document": document,
+        "file_url": document.file.url,
+        "is_image_file": document.file.name.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff")),
         "latest_result": latest_result,
         "latest_signature_request": latest_signature_request,
         "form": form,
