@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.forms import formset_factory
+from unittest.mock import patch
 from apps.accounts.models import User
 from apps.doctors.models import DoctorProfile
 from apps.patients.models import PatientProfile
@@ -253,7 +254,8 @@ class PatientSummaryTests(TestCase):
         }
         upsert_extraction_from_parsed(doc2, parsed2, raw_text="y")
 
-        summary = generate_patient_document_summary(self.patient, generated_by=self.doctor)
+        with patch.dict("os.environ", {"SUMMARY_LLM_PROVIDER": "rule_based"}):
+            summary = generate_patient_document_summary(self.patient, generated_by=self.doctor)
         self.assertIsInstance(summary, PatientDocumentSummary)
         self.assertEqual(summary.source_document_count, 2)
         self.assertIn("abnormal lab indicator(s)", summary.summary_text)

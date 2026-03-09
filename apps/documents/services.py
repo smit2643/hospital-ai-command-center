@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import os.path
 import re
 import urllib.error
 import urllib.request
@@ -236,73 +237,63 @@ def _extract_json_from_text(raw: str) -> dict:
         return {}
 
 
-def _gemini_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | None, str]:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        return None, "GEMINI_API_KEY not configured"
+def _collect_project_md_content(max_chars: int = 8000) -> str:
+    """Walk BASE_DIR and collect text from all .md files up to *max_chars* total."""
     try:
-        import google.generativeai as genai  # type: ignore
-    except Exception as exc:
-        return None, f"Gemini SDK missing: {exc.__class__.__name__}"
+        import django.conf  # type: ignore  # noqa: PLC0415
+        base_dir = str(django.conf.settings.BASE_DIR)
+    except Exception:  # noqa: BLE001
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    genai.configure(api_key=api_key)
-    configured_single = os.getenv("SUMMARY_GEMINI_MODEL", os.getenv("GEMINI_MODEL", "")).strip()
-    configured_many = os.getenv("SUMMARY_GEMINI_MODELS", "").strip()
-    candidates = []
-    if configured_many:
-        candidates.extend([item.strip() for item in configured_many.split(",") if item.strip()])
-    if configured_single:
-        candidates.append(configured_single)
-    defaults = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"]
-    for item in defaults:
-        if item not in candidates:
-            candidates.append(item)
-
-    prompt = (
-        "You are a clinical summarization assistant.\n"
-        "Return only valid JSON with keys:\n"
-        '{'
-        '"doctor_ready_summary": "one concise sentence", '
-        '"doctor_ready_sections": ["short bullet 1", "short bullet 2"], '
-        '"priority_flags": ["flag 1", "flag 2"]'
-        "}\n"
-        "Constraints:\n"
-        "- Keep concise and doctor-friendly.\n"
-        "- Use only provided data.\n"
-        "- Mention timeline/trend direction when present.\n"
-        f"Patient: {patient_name}\n"
-        f"Data: {json.dumps(payload, ensure_ascii=True)}"
-    )
-    last_error = ""
-    response = None
-    chosen_model = ""
-    for model_name in candidates:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            chosen_model = model_name
+    collected: list[str] = []
+    total = 0
+    # Walk deterministically so results are stable across runs
+    for root, dirs, files in os.walk(base_dir):
+        # Skip hidden dirs, virtualenv, __pycache__, staticfiles, media
+        dirs[:] = sorted(
+            d for d in dirs
+            if not d.startswith(".") and d not in {"__pycache__", "staticfiles", "media", "node_modules", ".git"}
+        )
+        for fname in sorted(files):
+            if not fname.endswith(".md"):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                with open(fpath, encoding="utf-8", errors="ignore") as fh:
+                    text = fh.read().strip()
+            except OSError:
+                continue
+            if not text:
+                continue
+            header = f"### {os.path.relpath(fpath, base_dir)}"
+            chunk = f"{header}\n{text}"
+            remaining = max_chars - total
+            if remaining <= 0:
+                break
+            if len(chunk) > remaining:
+                chunk = chunk[:remaining]
+            collected.append(chunk)
+            total += len(chunk)
+        if total >= max_chars:
             break
-        except Exception as exc:
-            last_error = f"{model_name}: {exc.__class__.__name__}"
-            continue
-    if response is None:
-        return None, f"Gemini API call failed: {last_error or 'unknown'}"
-    parsed = _extract_json_from_text(getattr(response, "text", "") or "")
-    if not isinstance(parsed, dict):
-        return None, "Gemini response was not valid JSON"
-    if not parsed.get("doctor_ready_summary") or not isinstance(parsed.get("doctor_ready_sections"), list):
-        return None, "Gemini response missing required keys"
-    parsed["_meta_model"] = chosen_model
-    return parsed, ""
+    return "\n\n".join(collected)
 
 
 def _ollama_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | None, str]:
     base_url = os.getenv("SUMMARY_OLLAMA_BASE_URL", "http://ollama:11434").strip().rstrip("/")
     model = os.getenv("SUMMARY_OLLAMA_MODEL", "qwen2.5:0.5b").strip()
     endpoint = f"{base_url}/api/generate"
+
+    # Build context from project .md files when present
+    md_context = payload.pop("project_context_md", "") or ""
+    context_block = (
+        "\nProject background (from documentation files):\n"
+        + md_context[:4000]  # hard-cap to stay within small-model context
+    ) if md_context else ""
+
     prompt = (
         "You are a clinical summarization assistant.\n"
-        "Return only valid JSON with keys:\n"
+        "Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:\n"
         '{'
         '"doctor_ready_summary": "one concise sentence", '
         '"doctor_ready_sections": ["short bullet 1", "short bullet 2"], '
@@ -310,10 +301,11 @@ def _ollama_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | Non
         "}\n"
         "Constraints:\n"
         "- Keep concise and doctor-friendly.\n"
-        "- Use only provided data.\n"
+        "- Use only provided patient data.\n"
         "- Mention timeline/trend direction when present.\n"
         f"Patient: {patient_name}\n"
         f"Data: {json.dumps(payload, ensure_ascii=True)}"
+        f"{context_block}"
     )
     body = json.dumps(
         {
@@ -321,28 +313,61 @@ def _ollama_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | Non
             "prompt": prompt,
             "stream": False,
             "format": "json",
-            "options": {"temperature": 0.2},
+            "options": {"temperature": 0.2, "num_predict": 512},
         }
     ).encode("utf-8")
     req = urllib.request.Request(endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
             raw = resp.read().decode("utf-8", errors="ignore")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
         return None, f"Ollama HTTP {exc.code}: {detail[:240]}"
+    except urllib.error.URLError as exc:
+        reason = str(exc.reason)
+        if "Connection refused" in reason or "refused" in reason.lower():
+            return None, (
+                f"Ollama is not running at {base_url}. "
+                "Start it with: ollama serve"
+            )
+        return None, f"Ollama connection error: {reason[:200]}"
     except Exception as exc:  # noqa: BLE001
-        return None, f"Ollama call failed: {exc.__class__.__name__}"
+        return None, f"Ollama call failed: {exc.__class__.__name__}: {exc}"
 
+    # --- parse response ---
+    # Ollama non-streaming returns one JSON envelope: {"response": "...", "done": true, ...}
+    # If the outer parse fails (very rare), try as raw text directly
     envelope = _extract_json_from_text(raw)
     response_text = str(envelope.get("response", "")).strip()
+
+    # Streaming fallback: each line is a JSON object; concatenate "response" fields
+    if not response_text and raw.strip():
+        parts = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                parts.append(str(obj.get("response", "")))
+            except Exception:  # noqa: BLE001
+                pass
+        response_text = "".join(parts).strip()
+
     if not response_text:
-        return None, "Ollama response was empty"
+        return None, (
+            f"Ollama returned empty response for model '{model}'. "
+            "Is the model pulled? Run: ollama pull " + model
+        )
+
     parsed = _extract_json_from_text(response_text)
     if not parsed:
-        return None, "Ollama response was not valid JSON"
+        # Last-ditch: try the full raw text in case the envelope wrapping was skipped
+        parsed = _extract_json_from_text(raw)
+    if not parsed:
+        return None, f"Ollama response was not valid JSON (model: {model})"
     if not parsed.get("doctor_ready_summary") or not isinstance(parsed.get("doctor_ready_sections"), list):
-        return None, "Ollama response missing required keys"
+        return None, f"Ollama response missing required keys (model: {model})"
     parsed["_meta_model"] = model
     return parsed, ""
 
@@ -505,7 +530,7 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
     }
 
     llm_provider = os.getenv("SUMMARY_LLM_PROVIDER", "rule_based").strip().lower()
-    if llm_provider in {"gemini", "ollama"}:
+    if llm_provider == "ollama":
         llm_payload = {
             "abnormal_tests": abnormal_tests[:12],
             "medications": medications[:20],
@@ -516,16 +541,14 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             "document_type_breakdown": doc_types,
             "document_count": len(docs),
         }
-        if llm_provider == "gemini":
-            llm_result, llm_error = _gemini_llm_summary(
-                patient_name=patient.user.full_name if getattr(patient, "user", None) else "",
-                payload=llm_payload,
-            )
-        else:
-            llm_result, llm_error = _ollama_llm_summary(
-                patient_name=patient.user.full_name if getattr(patient, "user", None) else "",
-                payload=llm_payload,
-            )
+        if llm_provider == "ollama":
+            # Enrich the payload with content from all project .md files so the
+            # model has hospital-system context when writing the clinical summary.
+            llm_payload["project_context_md"] = _collect_project_md_content()
+        llm_result, llm_error = _ollama_llm_summary(
+            patient_name=patient.user.full_name if getattr(patient, "user", None) else "",
+            payload=llm_payload,
+        )
         if llm_result:
             summary_data["doctor_ready_summary"] = str(llm_result.get("doctor_ready_summary", doctor_ready_summary)).strip()
             sections = llm_result.get("doctor_ready_sections", doctor_ready_sections)
