@@ -25,7 +25,6 @@
     {% if sign_request.artifact %}
       <div class="alert alert-success">Signed artifact generated and stored successfully.</div>
       <p><strong>Signed At:</strong> {{ sign_request.artifact.signed_at }}</p>
-      <p><strong>SHA-256 Hash:</strong><br><code>{{ sign_request.artifact.document_hash_sha256 }}</code></p>
       <a class="btn btn-success" href="{{ sign_request.artifact.signed_pdf.url }}">Download Signed PDF</a>
     {% else %}
       <div class="alert alert-info">No signed artifact yet.</div>

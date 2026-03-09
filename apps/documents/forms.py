@@ -16,7 +16,6 @@ class DocumentManageForm(forms.ModelForm):
 
 
 class OCRReviewForm(forms.ModelForm):
-    send_for_signature = forms.BooleanField(required=False)
     signer_email = forms.EmailField(required=False)
 
     class Meta:
@@ -38,13 +37,6 @@ class OCRReviewForm(forms.ModelForm):
             "patient_phone": forms.TextInput(attrs={"readonly": "readonly"}),
             "patient_dob_text": forms.TextInput(attrs={"readonly": "readonly"}),
         }
-
-    def clean(self):
-        cleaned = super().clean()
-        if cleaned.get("send_for_signature") and not cleaned.get("signer_email"):
-            self.add_error("signer_email", "Signer email is required when sending for signature.")
-        return cleaned
-
 
 class OCRLabTestForm(forms.Form):
     test_name = forms.CharField(required=False, max_length=255)

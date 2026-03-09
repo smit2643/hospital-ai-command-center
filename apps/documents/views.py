@@ -335,7 +335,7 @@ def ocr_result(request, document_id: int):
                 metadata={"patient_id": document.patient_id, "document_type": document.document_type},
             )
 
-            should_send_signature = form.cleaned_data.get("send_for_signature") or request.POST.get("action") == "save_send"
+            should_send_signature = request.POST.get("action") == "save_send"
             if should_send_signature:
                 already_open = document.signature_requests.filter(status__in=["SENT", "VIEWED"]).exists()
                 already_signed = document.signature_requests.filter(status="SIGNED").exists()

@@ -133,10 +133,7 @@
           {% endif %}
 
           <hr class="my-3" />
-          <div class="form-check mb-2">
-            {{ form.send_for_signature }}
-            <label class="form-check-label" for="id_send_for_signature">Send this document for patient signature</label>
-          </div>
+          <p class="text-muted mb-2">Use <strong>Save + Send For Signature</strong> to save OCR details and immediately email signer.</p>
           <div class="mb-2">
             <label for="id_signer_email">Signer Email</label>
             {{ form.signer_email }}
