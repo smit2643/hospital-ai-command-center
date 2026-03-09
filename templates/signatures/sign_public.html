@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="glass p-4 form-shell reveal">
+<section class="reveal">
   <div class="page-head">
     <div>
       <h1 class="page-title">Document Signature</h1>
@@ -9,39 +9,64 @@
     <span class="status-pill status-info">{{ sign_request.status }}</span>
   </div>
 
-  <form method="post" id="sign-form" enctype="multipart/form-data">{% csrf_token %}
-    {{ form.non_field_errors }}
-    <div class="row g-3">
-      <div class="col-lg-4">
-        <label for="id_signature_type">Signature Mode</label>
-        {{ form.signature_type }}
-      </div>
-      <div class="col-lg-8" id="typed-box">
-        <label for="id_typed_signature">Type Signature</label>
-        {{ form.typed_signature }}
-        {{ form.typed_signature.errors }}
-      </div>
-    </div>
-
-    <div class="mt-3" id="drawn-box">
-      <label>Draw Signature</label><br />
-      <canvas id="sig-canvas" class="sig-canvas" width="560" height="180"></canvas>
-      <input type="hidden" name="drawn_signature_data" id="drawn_signature_data" />
-      {{ form.drawn_signature_data.errors }}
-      <div class="mt-2">
-        <button class="btn btn-outline-primary btn-sm" type="button" id="clear-sig">Clear Signature</button>
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="glass p-3 h-100">
+        <h2 class="h5">Document Preview</h2>
+        <p class="text-muted">Click anywhere on the document to place signature.</p>
+        <div id="doc-placement-area" style="position:relative;border:1px solid #d9e2ec;border-radius:12px;overflow:hidden;min-height:420px;">
+          {% if is_image %}
+            <img src="{{ file_url }}" id="doc-preview" alt="Document preview" style="width:100%;display:block;" />
+          {% else %}
+            <iframe src="{{ file_url }}" id="doc-preview" title="Document preview" style="width:100%;height:520px;border:0;"></iframe>
+          {% endif %}
+          <div id="placement-overlay" style="position:absolute;inset:0;cursor:crosshair;"></div>
+          <div id="signature-marker" style="position:absolute;width:18px;height:18px;border-radius:50%;background:#0d6efd;display:none;transform:translate(-50%,-50%);box-shadow:0 0 0 3px rgba(13,110,253,.25);"></div>
+        </div>
       </div>
     </div>
 
-    <div class="mt-3" id="upload-box">
-      <label for="id_signature_image_file">Upload Signature Image</label>
-      {{ form.signature_image_file }}
-      {{ form.signature_image_file.errors }}
-      <p class="text-muted mb-0">Accepted: JPG/PNG. This image is embedded in signed artifact records.</p>
-    </div>
+    <div class="col-lg-5">
+      <div class="glass p-3 form-shell h-100">
+        <h2 class="h5">Sign & Submit</h2>
+        <form method="post" id="sign-form" enctype="multipart/form-data">{% csrf_token %}
+          {{ form.non_field_errors }}
+          <div class="mb-2">
+            <label for="id_signature_type">Signature Mode</label>
+            {{ form.signature_type }}
+          </div>
 
-    <button class="btn btn-primary mt-3" type="submit">Complete Signature</button>
-  </form>
+          <div class="mb-2" id="typed-box">
+            <label for="id_typed_signature">Type Signature</label>
+            {{ form.typed_signature }}
+            {{ form.typed_signature.errors }}
+          </div>
+
+          <div class="mb-2" id="drawn-box">
+            <label>Draw Signature</label><br />
+            <canvas id="sig-canvas" class="sig-canvas" width="420" height="160"></canvas>
+            <input type="hidden" name="drawn_signature_data" id="drawn_signature_data" />
+            {{ form.drawn_signature_data.errors }}
+            <div class="mt-2">
+              <button class="btn btn-outline-primary btn-sm" type="button" id="clear-sig">Clear Signature</button>
+            </div>
+          </div>
+
+          <div class="mb-2" id="upload-box">
+            <label for="id_signature_image_file">Upload Signature Image</label>
+            {{ form.signature_image_file }}
+            {{ form.signature_image_file.errors }}
+          </div>
+
+          {{ form.signature_pos_x }}
+          {{ form.signature_pos_y }}
+          <p class="text-muted small">Placement X/Y are set by clicking the document preview.</p>
+
+          <button class="btn btn-primary mt-2" type="submit">Complete Signature</button>
+        </form>
+      </div>
+    </div>
+  </div>
 </section>
 {% endblock %}
 {% block scripts %}

@@ -1,0 +1,14 @@
+Hello,
+
+A document is ready for your signature.
+
+Patient: {{ patient_name }}
+Document ID: #{{ document_id }}
+Expires at: {{ expires_at }}
+
+Click here to sign:
+{{ sign_url }}
+
+If you did not expect this request, please ignore this email.
+
+- Hospital AI Signature Desk

@@ -13,6 +13,8 @@ class SignatureSubmitForm(forms.Form):
     typed_signature = forms.CharField(required=False, max_length=120)
     drawn_signature_data = forms.CharField(required=False)
     signature_image_file = forms.ImageField(required=False)
+    signature_pos_x = forms.FloatField(required=False, min_value=0, max_value=100, widget=forms.HiddenInput())
+    signature_pos_y = forms.FloatField(required=False, min_value=0, max_value=100, widget=forms.HiddenInput())
 
     def clean(self):
         cleaned = super().clean()
@@ -23,4 +25,6 @@ class SignatureSubmitForm(forms.Form):
             self.add_error("typed_signature", "Please type your signature")
         if signature_type == "UPLOADED" and not cleaned.get("signature_image_file"):
             self.add_error("signature_image_file", "Please upload your signature image")
+        if cleaned.get("signature_pos_x") is None or cleaned.get("signature_pos_y") is None:
+            self.add_error(None, "Please click on the document to place signature position.")
         return cleaned

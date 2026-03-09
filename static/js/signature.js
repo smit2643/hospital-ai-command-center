@@ -5,6 +5,11 @@
   const uploadBox = document.getElementById('upload-box');
   const canvas = document.getElementById('sig-canvas');
   const hidden = document.getElementById('drawn_signature_data');
+  const posXInput = document.getElementById('id_signature_pos_x');
+  const posYInput = document.getElementById('id_signature_pos_y');
+  const placementOverlay = document.getElementById('placement-overlay');
+  const placementArea = document.getElementById('doc-placement-area');
+  const marker = document.getElementById('signature-marker');
   const clearBtn = document.getElementById('clear-sig');
   const form = document.getElementById('sign-form');
 
@@ -67,4 +72,32 @@
 
   typeField.addEventListener('change', refreshMode);
   refreshMode();
+
+  if (placementOverlay && placementArea && marker && posXInput && posYInput) {
+    function setPosition(clientX, clientY) {
+      const rect = placementArea.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
+      const xPct = ((x / rect.width) * 100).toFixed(2);
+      const yPct = ((y / rect.height) * 100).toFixed(2);
+      posXInput.value = xPct;
+      posYInput.value = yPct;
+      marker.style.display = 'block';
+      marker.style.left = `${x}px`;
+      marker.style.top = `${y}px`;
+    }
+
+    placementOverlay.addEventListener('click', function (e) {
+      setPosition(e.clientX, e.clientY);
+    });
+
+    const initialX = parseFloat(posXInput.value || '');
+    const initialY = parseFloat(posYInput.value || '');
+    if (!Number.isNaN(initialX) && !Number.isNaN(initialY)) {
+      const rect = placementArea.getBoundingClientRect();
+      marker.style.display = 'block';
+      marker.style.left = `${(initialX / 100) * rect.width}px`;
+      marker.style.top = `${(initialY / 100) * rect.height}px`;
+    }
+  }
 })();

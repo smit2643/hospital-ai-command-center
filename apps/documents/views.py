@@ -335,14 +335,16 @@ def ocr_result(request, document_id: int):
                 metadata={"patient_id": document.patient_id, "document_type": document.document_type},
             )
 
-            if form.cleaned_data.get("send_for_signature"):
+            should_send_signature = form.cleaned_data.get("send_for_signature") or request.POST.get("action") == "save_send"
+            if should_send_signature:
                 already_open = document.signature_requests.filter(status__in=["SENT", "VIEWED"]).exists()
                 already_signed = document.signature_requests.filter(status="SIGNED").exists()
                 if not already_open and not already_signed:
+                    signer_email = form.cleaned_data["signer_email"] or document.patient.user.email
                     sign_request = SignatureRequest.objects.create(
                         document=document,
                         requester=request.user,
-                        signer_email=form.cleaned_data["signer_email"],
+                        signer_email=signer_email,
                         expires_at=build_signature_expiry(),
                     )
                     sent, error = dispatch_signature_request_email(sign_request.id)

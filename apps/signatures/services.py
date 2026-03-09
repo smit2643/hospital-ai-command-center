@@ -7,6 +7,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.utils import timezone
 from reportlab.lib.pagesizes import letter
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from PIL import Image, ImageDraw, ImageFont
 from apps.documents.models import PatientDocument
@@ -36,20 +37,46 @@ def _make_typed_signature_image(text: str) -> bytes:
     return buffer.getvalue()
 
 
-def _make_signed_pdf(document: PatientDocument, signer_email: str, signature_kind: str) -> bytes:
+def _make_signed_pdf(document: PatientDocument, signer_email: str, signature_kind: str, signature_image: bytes, pos_x: float, pos_y: float) -> bytes:
     output = io.BytesIO()
     c = canvas.Canvas(output, pagesize=letter)
-    width, height = letter
+    page_width, page_height = letter
 
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(40, height - 50, "Signed Document")
-    c.setFont("Helvetica", 11)
-    c.drawString(40, height - 80, f"Original document ID: {document.id}")
-    c.drawString(40, height - 100, f"Patient: {document.patient.user.full_name}")
-    c.drawString(40, height - 120, f"Signer email: {signer_email}")
-    c.drawString(40, height - 140, f"Signature type: {signature_kind}")
-    c.drawString(40, height - 160, f"Signed at (UTC): {timezone.now().isoformat()}")
-    c.drawString(40, height - 200, "This signed artifact references the original uploaded file.")
+    source_drawn = False
+    suffix = os.path.splitext(document.file.name or "")[1].lower()
+    if suffix in {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}:
+        try:
+            doc_img = Image.open(document.file.path).convert("RGB")
+            img_reader = ImageReader(doc_img)
+            c.drawImage(img_reader, 0, 0, width=page_width, height=page_height, preserveAspectRatio=True, anchor="c")
+            source_drawn = True
+        except Exception:
+            source_drawn = False
+
+    if not source_drawn:
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(40, page_height - 50, "Signed Document")
+        c.setFont("Helvetica", 11)
+        c.drawString(40, page_height - 80, f"Original document ID: {document.id}")
+        c.drawString(40, page_height - 100, f"Patient: {document.patient.user.full_name}")
+        c.drawString(40, page_height - 120, f"Signer email: {signer_email}")
+        c.drawString(40, page_height - 140, f"Signature type: {signature_kind}")
+        c.drawString(40, page_height - 160, f"Signed at (UTC): {timezone.now().isoformat()}")
+        c.drawString(40, page_height - 180, f"Original file: {document.file.name}")
+
+    sig_img = Image.open(io.BytesIO(signature_image)).convert("RGBA")
+    sig_reader = ImageReader(sig_img)
+    sig_w = 180
+    sig_h = 60
+    x = (max(0.0, min(100.0, pos_x)) / 100.0) * page_width
+    y_from_top = (max(0.0, min(100.0, pos_y)) / 100.0) * page_height
+    y = page_height - y_from_top - sig_h
+    x = max(0, min(page_width - sig_w, x))
+    y = max(0, min(page_height - sig_h, y))
+    c.drawImage(sig_reader, x, y, width=sig_w, height=sig_h, mask="auto")
+
+    c.setFont("Helvetica", 8)
+    c.drawString(20, 12, f"Signed by {signer_email} at {timezone.now().isoformat()} | SHA256 protected artifact")
 
     c.showPage()
     c.save()
@@ -63,6 +90,8 @@ def finalize_signature(
     typed_signature: str,
     drawn_signature_data: str,
     uploaded_signature_file,
+    signature_pos_x: float,
+    signature_pos_y: float,
     ip_address: str,
     user_agent: str,
 ) -> SignatureArtifact:
@@ -79,7 +108,14 @@ def finalize_signature(
         image_bytes = _make_typed_signature_image(typed_signature or sign_request.signer_email)
         image_ext = "png"
 
-    pdf_bytes = _make_signed_pdf(sign_request.document, sign_request.signer_email, signature_type)
+    pdf_bytes = _make_signed_pdf(
+        sign_request.document,
+        sign_request.signer_email,
+        signature_type,
+        image_bytes,
+        signature_pos_x,
+        signature_pos_y,
+    )
     digest = hashlib.sha256(pdf_bytes).hexdigest()
 
     artifact = SignatureArtifact(

@@ -1,6 +1,7 @@
 from celery import shared_task
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.urls import reverse
 
 from apps.core.services import log_audit
@@ -13,19 +14,23 @@ def send_signature_request_email_now(signature_request_id: int):
     sign_url = reverse("signatures:sign_public", kwargs={"token": str(sign_request.token)})
     full_url = f"{settings.SITE_BASE_URL}{sign_url}"
     subject = f"Signature request for document #{sign_request.document_id}"
-    body = (
-        f"You have a signature request.\n"
-        f"Open this secure link: {full_url}\n"
-        f"This link expires at {sign_request.expires_at.isoformat()}"
-    )
+    context = {
+        "patient_name": sign_request.document.patient.user.full_name,
+        "document_id": sign_request.document_id,
+        "expires_at": sign_request.expires_at,
+        "sign_url": full_url,
+    }
+    text_body = render_to_string("signatures/email_signature_request.txt", context)
+    html_body = render_to_string("signatures/email_signature_request.html", context)
 
-    send_mail(
-        subject,
-        body,
-        settings.DEFAULT_FROM_EMAIL,
-        [sign_request.signer_email],
-        fail_silently=False,
+    message = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[sign_request.signer_email],
     )
+    message.attach_alternative(html_body, "text/html")
+    message.send(fail_silently=False)
     log_audit(
         actor=sign_request.requester,
         action="signature.email_sent",

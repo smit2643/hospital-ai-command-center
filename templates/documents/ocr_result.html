@@ -144,7 +144,8 @@
           </div>
 
           <div class="d-flex flex-wrap gap-2 mt-3">
-            <button class="btn btn-primary" type="submit">Save OCR Fields</button>
+            <button class="btn btn-primary" type="submit" name="action" value="save">Save OCR Fields</button>
+            <button class="btn btn-success" type="submit" name="action" value="save_send">Save + Send For Signature</button>
             {% if latest_signature_request %}
               <a class="btn btn-outline-success" href="/signatures/{{ latest_signature_request.id }}/status">Open Signature Status</a>
             {% endif %}

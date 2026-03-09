@@ -70,6 +70,8 @@ def sign_public(request, token):
                 typed_signature=form.cleaned_data.get("typed_signature", ""),
                 drawn_signature_data=form.cleaned_data.get("drawn_signature_data", ""),
                 uploaded_signature_file=form.cleaned_data.get("signature_image_file"),
+                signature_pos_x=form.cleaned_data.get("signature_pos_x") or 80.0,
+                signature_pos_y=form.cleaned_data.get("signature_pos_y") or 85.0,
                 ip_address=request.META.get("REMOTE_ADDR", ""),
                 user_agent=request.META.get("HTTP_USER_AGENT", ""),
             )
@@ -83,9 +85,16 @@ def sign_public(request, token):
             messages.success(request, "Document signed successfully")
             return redirect("signatures:status", request_id=sign_request.id)
     else:
-        form = SignatureSubmitForm(initial={"signature_type": "DRAWN"})
+        form = SignatureSubmitForm(initial={"signature_type": "DRAWN", "signature_pos_x": 80, "signature_pos_y": 85})
 
-    return render(request, "signatures/sign_public.html", {"sign_request": sign_request, "form": form})
+    file_url = sign_request.document.file.url
+    lower_name = (sign_request.document.file.name or "").lower()
+    is_image = lower_name.endswith((".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"))
+    return render(
+        request,
+        "signatures/sign_public.html",
+        {"sign_request": sign_request, "form": form, "file_url": file_url, "is_image": is_image},
+    )
 
 
 @login_required
