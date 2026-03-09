@@ -10,10 +10,12 @@ Production-style hospital workflow platform with role-based access, OCR-assisted
 5. OCR is run from the document review screen.
 6. Extracted values are shown as editable fields and can be saved.
 7. Admin/doctor can generate a patient-level summary across all uploaded documents.
-8. From OCR review, user can `Save` or `Save + Send For Signature`.
-9. Patient receives signature email with secure tokenized link.
-10. Patient signs on the signing page (draw + place signature on document).
-11. Signed PDF is generated, stored, and downloadable from patient documents list.
+8. Summary renders as a structured intelligence board (not raw OCR dump): overview, abnormal tests, medications, notes, timeline.
+9. Summary headline is generated from structured `summary_data` for stable UI readability.
+10. From OCR review, user can `Save` or `Save + Send For Signature`.
+11. Patient receives signature email with secure tokenized link.
+12. Patient signs on the signing page (draw + place signature on document).
+13. Signed PDF is generated, stored, and downloadable from patient documents list.
 
 ## Role permissions (enforced in UI + backend)
 - `Admin`
@@ -31,6 +33,12 @@ Production-style hospital workflow platform with role-based access, OCR-assisted
 - Patient profile management (expanded profile fields).
 - Patient document vault with add/list/detail actions.
 - Patient intelligence summary card (cross-document clinical snapshot).
+- Structured patient intelligence board with sections:
+  - Executive headline (from `summary_data`)
+  - Abnormal lab indicators
+  - Medication mentions
+  - Clinical notes highlights
+  - Recent document timeline
 - OCR extraction workflow with editable mapped fields.
 - OCR live status checks (no manual full-page workflow dependency).
 - Signature email request flow with styled HTML email template.
@@ -89,6 +97,24 @@ For local testing without SMTP:
 - `/documents/<id>/ocr/result/`
 - `/signatures/request/<document_id>/`
 - `/sign/<token>/`
+
+## Patient Summary Logic (Current)
+- Model: `PatientDocumentSummary`
+- Trigger: `POST /patients/<id>/documents/summary/generate/`
+- Data sources:
+  - `PatientDocument`
+  - `DocumentExtraction`
+  - `DocumentLabTest`
+  - `DocumentExtractedField`
+- Stored output:
+  - `summary_text` (concise executive sentence)
+  - `summary_data` (structured JSON for UI cards)
+- Abnormal test logic:
+  - Numeric value is parsed from test value text.
+  - Reference ranges like `12.0-16.0` / `70-100` / `12 to 16` are parsed safely.
+  - Test is marked abnormal only if value is outside `[low, high]`.
+- UX note:
+  - If old summary content is visible, click `Regenerate Summary` to rebuild using latest logic.
 
 ## API highlights
 - `/api/v1/auth/login/`
