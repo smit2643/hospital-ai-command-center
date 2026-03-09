@@ -1,24 +1,46 @@
 <!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 0;">
+  <body style="margin:0;padding:0;background:#eef3fb;font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#15233a;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:28px 0;">
       <tr>
         <td align="center">
-          <table role="presentation" width="620" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 6px 20px rgba(13,38,76,.12);">
+          <table role="presentation" width="680" cellspacing="0" cellpadding="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 12px 28px rgba(6,32,67,.14);">
             <tr>
-              <td style="background:linear-gradient(120deg,#0d6efd,#20c997);padding:24px 28px;color:#fff;">
-                <h1 style="margin:0;font-size:24px;">Signature Request</h1>
-                <p style="margin:8px 0 0 0;font-size:14px;opacity:.95;">Secure medical document signing</p>
+              <td style="padding:22px 28px;background:linear-gradient(120deg,#0d6efd,#00b894);color:#fff;">
+                <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.88;">Hospital AI Signature Desk</div>
+                <h1 style="margin:8px 0 0 0;font-size:28px;line-height:1.2;">Document Signature Requested</h1>
+                <p style="margin:10px 0 0 0;font-size:14px;opacity:.95;">Secure, tokenized medical-signature workflow</p>
               </td>
             </tr>
             <tr>
-              <td style="padding:24px 28px;color:#1e2a3a;">
-                <p style="margin:0 0 10px 0;font-size:15px;">A document is ready for your signature.</p>
-                <p style="margin:0 0 8px 0;"><strong>Patient:</strong> {{ patient_name }}</p>
-                <p style="margin:0 0 8px 0;"><strong>Document ID:</strong> #{{ document_id }}</p>
-                <p style="margin:0 0 18px 0;"><strong>Expires at:</strong> {{ expires_at }}</p>
-                <a href="{{ sign_url }}" style="display:inline-block;padding:12px 22px;border-radius:10px;background:#0d6efd;color:#fff;text-decoration:none;font-weight:700;">Click Here To Sign The Document</a>
-                <p style="margin:16px 0 0 0;font-size:12px;color:#556274;">If button does not work, copy this link:<br /><a href="{{ sign_url }}" style="color:#0d6efd;word-break:break-all;">{{ sign_url }}</a></p>
+              <td style="padding:26px 28px 8px 28px;">
+                <p style="margin:0 0 14px 0;font-size:15px;">A medical document is ready for your signature.</p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #dde7f5;border-radius:12px;background:#f8fbff;">
+                  <tr>
+                    <td style="padding:14px 16px;font-size:14px;"><strong>Patient:</strong> {{ patient_name }}</td>
+                    <td style="padding:14px 16px;font-size:14px;"><strong>Document ID:</strong> #{{ document_id }}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding:0 16px 14px 16px;font-size:14px;"><strong>Link Expires:</strong> {{ expires_at }}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 28px 8px 28px;">
+                <a href="{{ sign_url }}" style="display:inline-block;padding:13px 24px;border-radius:10px;background:#0d6efd;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;">Click Here To Sign The Document</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 28px 24px 28px;">
+                <p style="margin:0;font-size:12px;color:#5c6b80;line-height:1.6;">If the button does not open, copy and paste this secure link:<br />
+                  <a href="{{ sign_url }}" style="color:#0d6efd;word-break:break-all;">{{ sign_url }}</a>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 28px;background:#f2f6fc;color:#617189;font-size:11px;line-height:1.6;">
+                This email was generated automatically by Hospital AI. If you did not expect this request, you can ignore this message.
               </td>
             </tr>
           </table>

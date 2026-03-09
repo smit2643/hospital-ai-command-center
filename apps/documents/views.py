@@ -67,7 +67,7 @@ def patient_documents(request, patient_id: int):
     if not doctor_can_access_patient(request.user, patient):
         require_role(request.user, request.user.Role.ADMIN)
 
-    docs = patient.documents.select_related("uploaded_by").prefetch_related("signature_requests").all()
+    docs = patient.documents.select_related("uploaded_by").prefetch_related("signature_requests__artifact").all()
     return render(
         request,
         "documents/patient_documents.html",
@@ -359,6 +359,15 @@ def ocr_result(request, document_id: int):
                         messages.success(request, "OCR details saved and signature request sent to patient email.")
                     else:
                         messages.warning(request, f"OCR details saved. Email failed: {error}")
+                elif already_open:
+                    existing_request = (
+                        document.signature_requests.filter(status__in=["SENT", "VIEWED"]).order_by("-created_at").first()
+                    )
+                    sent, error = dispatch_signature_request_email(existing_request.id)
+                    if sent:
+                        messages.success(request, "OCR details saved and signature email was re-sent.")
+                    else:
+                        messages.warning(request, f"OCR details saved. Re-send email failed: {error}")
                 else:
                     messages.info(request, "OCR details saved. Signature already pending or completed.")
             else:

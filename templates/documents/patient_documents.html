@@ -53,6 +53,9 @@
               {% if not d.is_signed %}
               <a class="btn btn-outline-success btn-sm" href="/signatures/request/{{ d.id }}/">Request Signature</a>
               {% endif %}
+              {% if d.latest_signed_artifact %}
+              <a class="btn btn-success btn-sm" href="{{ d.latest_signed_artifact.signed_pdf.url }}">Download Signed Document</a>
+              {% endif %}
             </td>
           </tr>
           {% empty %}

@@ -60,6 +60,13 @@ class PatientDocument(models.Model):
     def is_signed(self) -> bool:
         return self.signature_requests.filter(status="SIGNED").exists()
 
+    @property
+    def latest_signed_artifact(self):
+        signed_request = self.signature_requests.filter(status="SIGNED").select_related("artifact").order_by("-created_at").first()
+        if signed_request and hasattr(signed_request, "artifact"):
+            return signed_request.artifact
+        return None
+
 
 class OCRResult(models.Model):
     document = models.ForeignKey(PatientDocument, on_delete=models.CASCADE, related_name="ocr_results")
