@@ -320,6 +320,75 @@ pre {
   gap: 10px;
 }
 
+/* Patient summary board */
+.summary-board {
+  border: 1px solid #d6e1ff;
+  border-radius: 16px;
+  padding: 16px;
+  background:
+    radial-gradient(500px 220px at 0% 0%, rgba(21, 93, 252, 0.08), transparent 62%),
+    radial-gradient(440px 220px at 100% 0%, rgba(14, 168, 138, 0.1), transparent 58%),
+    #fbfdff;
+}
+
+.summary-kicker {
+  display: inline-block;
+  background: #e8f0ff;
+  color: #17409b;
+  border: 1px solid #c6d8ff;
+  font-weight: 700;
+  letter-spacing: .2px;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.summary-lead {
+  color: #1a2d5d;
+  line-height: 1.5;
+}
+
+.summary-card {
+  background: #fff;
+  border: 1px solid #d7e2ff;
+  border-radius: 14px;
+  padding: 14px;
+  height: 100%;
+  box-shadow: 0 10px 20px rgba(32, 57, 130, 0.07);
+}
+
+.summary-card h6 {
+  margin-bottom: 10px;
+  font-family: "Sora", sans-serif;
+  font-size: 14px;
+}
+
+.summary-card--abnormal { border-left: 4px solid #f59e0b; }
+.summary-card--meds { border-left: 4px solid #155dfc; }
+.summary-card--notes { border-left: 4px solid #0ea88a; }
+.summary-card--timeline { border-left: 4px solid #7c3aed; }
+
+.summary-list {
+  display: grid;
+  gap: 8px;
+}
+
+.summary-item {
+  border: 1px solid #e4ebff;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f9fbff;
+}
+
+.summary-bullets {
+  padding-left: 18px;
+}
+
+.summary-bullets li {
+  margin-bottom: 8px;
+}
+
 .pulse-ring {
   --ring: 75%;
   width: 100%;

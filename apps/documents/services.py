@@ -186,13 +186,26 @@ def _to_float(value: str) -> float | None:
 
 
 def _range_bounds(reference_range: str) -> tuple[float | None, float | None]:
-    nums = re.findall(r"-?\d+(?:\.\d+)?", str(reference_range or ""))
+    normalized = str(reference_range or "").replace("to", "-").replace("–", "-")
+    nums = re.findall(r"\d+(?:\.\d+)?", normalized)
     if len(nums) < 2:
         return (None, None)
     try:
         return (float(nums[0]), float(nums[1]))
     except ValueError:
         return (None, None)
+
+
+def _dedupe_keep_order(items: list[str]) -> list[str]:
+    seen = set()
+    out = []
+    for item in items:
+        key = item.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(item.strip())
+    return out
 
 
 def generate_patient_document_summary(patient, generated_by=None) -> PatientDocumentSummary:
@@ -265,6 +278,10 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
                             "document_id": document.id,
                         }
                     )
+
+    medications = _dedupe_keep_order(medications)
+    diagnoses = _dedupe_keep_order(diagnoses)
+    notes = _dedupe_keep_order(notes)
 
     if not docs:
         summary_text = "No documents are available for this patient yet."

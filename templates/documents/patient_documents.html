@@ -55,9 +55,79 @@
       </div>
     </div>
 
-    <div class="glass p-3 mt-3">
-      <h6 class="mb-2">Executive Clinical Snapshot</h6>
-      <p class="mb-0" style="white-space: pre-line;">{{ latest_summary.summary_text }}</p>
+    <div class="summary-board mt-3">
+      <div class="summary-header mb-3">
+        <div class="summary-kicker">Executive Clinical Snapshot</div>
+        <div class="summary-lead">{{ latest_summary.summary_text|linebreaksbr }}</div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--abnormal">
+            <h6>Abnormal Lab Indicators</h6>
+            {% if latest_summary.summary_data.abnormal_tests %}
+              <div class="summary-list">
+                {% for t in latest_summary.summary_data.abnormal_tests %}
+                <div class="summary-item">
+                  <div class="fw-semibold">{{ t.test_name }}</div>
+                  <small>Value: {{ t.value }} {{ t.unit }} | Ref: {{ t.reference_range }} | Doc #{{ t.document_id }}</small>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="mb-0 text-secondary">No abnormal lab indicators detected from current extracted reports.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--meds">
+            <h6>Medication Mentions</h6>
+            {% if latest_summary.summary_data.medications %}
+              <ul class="summary-bullets mb-0">
+                {% for m in latest_summary.summary_data.medications %}
+                <li>{{ m }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="mb-0 text-secondary">No medication lines extracted yet.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--notes">
+            <h6>Clinical Notes Highlights</h6>
+            {% if latest_summary.summary_data.notes %}
+              <ul class="summary-bullets mb-0">
+                {% for n in latest_summary.summary_data.notes %}
+                <li>{{ n }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="mb-0 text-secondary">No clinical notes captured.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--timeline">
+            <h6>Recent Document Timeline</h6>
+            {% if latest_summary.summary_data.timeline %}
+              <div class="summary-list">
+                {% for event in latest_summary.summary_data.timeline|slice:":6" %}
+                <div class="summary-item">
+                  <div class="fw-semibold">{{ event.date }} · {{ event.type }}</div>
+                  <small>Doc #{{ event.document_id }} | OCR: {{ event.ocr_status }} | Signed: {% if event.signed %}Yes{% else %}No{% endif %}</small>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="mb-0 text-secondary">No timeline events available.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
     </div>
     {% else %}
     <div class="alert alert-info mt-3 mb-0">No summary generated yet. Click <strong>Generate Summary</strong> to build a patient-wide document briefing.</div>
