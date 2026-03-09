@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import re
+
 from django.utils import timezone
 
-from .models import DocumentExtractedField, DocumentExtraction, DocumentLabTest, PatientDocument
+from .models import (
+    DocumentExtractedField,
+    DocumentExtraction,
+    DocumentLabTest,
+    PatientDocument,
+    PatientDocumentSummary,
+)
 from .schema import get_schema_for_document_type
 
 
@@ -165,3 +173,139 @@ def mark_extraction_reviewed(extraction: DocumentExtraction, reviewer) -> None:
     extraction.reviewed_by = reviewer
     extraction.reviewed_at = timezone.now()
     extraction.save(update_fields=["is_reviewed", "reviewed_by", "reviewed_at", "updated_at"])
+
+
+def _to_float(value: str) -> float | None:
+    match = re.search(r"-?\d+(?:\.\d+)?", str(value or ""))
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def _range_bounds(reference_range: str) -> tuple[float | None, float | None]:
+    nums = re.findall(r"-?\d+(?:\.\d+)?", str(reference_range or ""))
+    if len(nums) < 2:
+        return (None, None)
+    try:
+        return (float(nums[0]), float(nums[1]))
+    except ValueError:
+        return (None, None)
+
+
+def generate_patient_document_summary(patient, generated_by=None) -> PatientDocumentSummary:
+    documents = (
+        patient.documents.select_related("uploaded_by")
+        .prefetch_related("ocr_results", "extraction__tests", "extraction__extra_fields")
+        .order_by("-created_at")
+    )
+    docs = list(documents)
+
+    lines = []
+    abnormal_tests: list[dict] = []
+    medications: list[str] = []
+    diagnoses: list[str] = []
+    notes: list[str] = []
+    timeline: list[dict] = []
+    doc_types: dict[str, int] = {}
+    ocr_done = 0
+
+    for document in docs:
+        doc_types[document.document_type] = doc_types.get(document.document_type, 0) + 1
+        if document.ocr_status == PatientDocument.OCRStatus.DONE:
+            ocr_done += 1
+
+        extraction = getattr(document, "extraction", None)
+        created_label = document.created_at.strftime("%Y-%m-%d")
+        timeline.append(
+            {
+                "document_id": document.id,
+                "date": created_label,
+                "type": document.get_document_type_display(),
+                "ocr_status": document.ocr_status,
+                "signed": bool(document.is_signed),
+            }
+        )
+
+        brief = [f"Doc #{document.id} ({document.get_document_type_display()}) on {created_label}"]
+        if extraction and extraction.doctor_name:
+            brief.append(f"doctor: {extraction.doctor_name}")
+        if extraction and extraction.hospital_name:
+            brief.append(f"hospital: {extraction.hospital_name}")
+        lines.append(" | ".join(brief))
+
+        if extraction and extraction.notes:
+            notes.append(extraction.notes.strip())
+
+        if extraction:
+            for row in extraction.extra_fields.all():
+                label = (row.label or row.field_key or "").strip().lower()
+                value = (row.value_text if row.value_type == DocumentExtractedField.ValueType.TEXT else row.value_short).strip()
+                if not value:
+                    continue
+                if "medication" in label or "rx" in label:
+                    medications.extend([v.strip("-• ").strip() for v in value.splitlines() if v.strip()])
+                elif "diagnosis" in label:
+                    diagnoses.extend([v.strip("-• ").strip() for v in value.splitlines() if v.strip()])
+
+            for test in extraction.tests.all():
+                value = _to_float(test.value)
+                low, high = _range_bounds(test.reference_range)
+                if value is None or low is None or high is None:
+                    continue
+                if value < low or value > high:
+                    abnormal_tests.append(
+                        {
+                            "test_name": test.test_name,
+                            "value": test.value,
+                            "unit": test.unit,
+                            "reference_range": test.reference_range,
+                            "document_id": document.id,
+                        }
+                    )
+
+    if not docs:
+        summary_text = "No documents are available for this patient yet."
+    else:
+        top_abnormal = abnormal_tests[:5]
+        meds_preview = medications[:6]
+        diagnoses_preview = diagnoses[:6]
+
+        summary_parts = [
+            f"Patient has {len(docs)} document(s). OCR completed for {ocr_done} document(s).",
+        ]
+        if diagnoses_preview:
+            summary_parts.append("Potential diagnoses noted: " + "; ".join(diagnoses_preview) + ".")
+        if meds_preview:
+            summary_parts.append("Medications mentioned: " + "; ".join(meds_preview) + ".")
+        if top_abnormal:
+            abnormal_text = "; ".join(
+                f'{item["test_name"]}={item["value"]} {item["unit"]} (ref {item["reference_range"]})'
+                for item in top_abnormal
+            )
+            summary_parts.append("Abnormal lab indicators: " + abnormal_text + ".")
+        if notes:
+            summary_parts.append("Clinical notes highlights: " + " ".join(notes[:3]))
+        summary_parts.append("Recent records: " + " || ".join(lines[:5]))
+        summary_text = "\n".join(summary_parts)
+
+    summary_data = {
+        "document_count": len(docs),
+        "ocr_done_count": ocr_done,
+        "document_type_breakdown": doc_types,
+        "abnormal_tests": abnormal_tests,
+        "medications": medications[:20],
+        "diagnoses": diagnoses[:20],
+        "notes": notes[:10],
+        "timeline": timeline,
+    }
+
+    return PatientDocumentSummary.objects.create(
+        patient=patient,
+        generated_by=generated_by,
+        source_document_count=len(docs),
+        summary_text=summary_text,
+        summary_data=summary_data,
+    )

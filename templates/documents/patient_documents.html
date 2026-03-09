@@ -6,7 +6,62 @@
       <h1 class="page-title">Document Vault</h1>
       <p class="page-subtitle">Patient: {{ patient.user.full_name }}</p>
     </div>
-    <a class="btn btn-primary" href="/documents/upload/">Add Document</a>
+    <div class="d-flex gap-2">
+      {% if can_generate_summary %}
+      <form method="post" action="/patients/{{ patient.id }}/documents/summary/generate/">
+        {% csrf_token %}
+        <button class="btn btn-warning" type="submit">
+          {% if latest_summary %}Regenerate Summary{% else %}Generate Summary{% endif %}
+        </button>
+      </form>
+      {% endif %}
+      <a class="btn btn-primary" href="/documents/upload/">Add Document</a>
+    </div>
+  </div>
+
+  <div class="glass p-4 mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h5 class="mb-1">Patient Intelligence Summary</h5>
+        <p class="text-secondary mb-0">Consolidated snapshot across all uploaded documents.</p>
+      </div>
+      {% if latest_summary %}
+      <small class="text-secondary">
+        Generated: {{ latest_summary.created_at|date:"Y-m-d H:i" }}
+        {% if latest_summary.generated_by %}by {{ latest_summary.generated_by.full_name }}{% endif %}
+      </small>
+      {% endif %}
+    </div>
+
+    {% if latest_summary %}
+    <div class="row g-3 mt-1">
+      <div class="col-md-4">
+        <div class="glass p-3 h-100">
+          <small class="text-secondary d-block">Documents Analysed</small>
+          <h4 class="mb-0">{{ latest_summary.source_document_count }}</h4>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="glass p-3 h-100">
+          <small class="text-secondary d-block">OCR Completed</small>
+          <h4 class="mb-0">{{ latest_summary.summary_data.ocr_done_count|default:0 }}</h4>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="glass p-3 h-100">
+          <small class="text-secondary d-block">Abnormal Tests</small>
+          <h4 class="mb-0">{{ latest_summary.summary_data.abnormal_tests|length }}</h4>
+        </div>
+      </div>
+    </div>
+
+    <div class="glass p-3 mt-3">
+      <h6 class="mb-2">Executive Clinical Snapshot</h6>
+      <p class="mb-0" style="white-space: pre-line;">{{ latest_summary.summary_text }}</p>
+    </div>
+    {% else %}
+    <div class="alert alert-info mt-3 mb-0">No summary generated yet. Click <strong>Generate Summary</strong> to build a patient-wide document briefing.</div>
+    {% endif %}
   </div>
 
   <div class="glass p-3">

@@ -15,7 +15,7 @@ from apps.signatures.tasks import dispatch_signature_request_email
 from .forms import DocumentManageForm, DocumentUploadForm, OCRDynamicFieldForm, OCRLabTestForm, OCRReviewForm
 from .models import DocumentExtractedField, DocumentLabTest, PatientDocument
 from .schema import get_schema_for_document_type
-from .services import mark_extraction_reviewed, upsert_extraction_from_parsed
+from .services import generate_patient_document_summary, mark_extraction_reviewed, upsert_extraction_from_parsed
 from .tasks import process_document_ocr
 
 
@@ -86,17 +86,43 @@ def patient_documents(request, patient_id: int):
         require_role(request.user, request.user.Role.ADMIN)
 
     docs = patient.documents.select_related("uploaded_by").prefetch_related("signature_requests__artifact").all()
+    latest_summary = patient.document_summaries.select_related("generated_by").first()
     return render(
         request,
         "documents/patient_documents.html",
         {
             "patient": patient,
             "documents": docs,
+            "latest_summary": latest_summary,
             "can_manage_docs": request.user.role == request.user.Role.ADMIN,
             "can_use_ocr": request.user.role in {request.user.Role.ADMIN, request.user.Role.DOCTOR},
             "can_request_signature": request.user.role in {request.user.Role.ADMIN, request.user.Role.DOCTOR},
+            "can_generate_summary": request.user.role in {request.user.Role.ADMIN, request.user.Role.DOCTOR},
         },
     )
+
+
+@login_required
+def generate_patient_summary(request, patient_id: int):
+    require_role(request.user, request.user.Role.ADMIN, request.user.Role.DOCTOR)
+    require_approved_doctor(request.user)
+    if request.method != "POST":
+        return redirect("documents:patient_docs", patient_id=patient_id)
+
+    patient = get_object_or_404(PatientProfile.objects.select_related("user"), id=patient_id)
+    if not doctor_can_access_patient(request.user, patient):
+        require_role(request.user, request.user.Role.ADMIN)
+
+    summary = generate_patient_document_summary(patient, generated_by=request.user)
+    log_audit(
+        actor=request.user,
+        action="patient.documents_summary_generated",
+        object_type="PatientDocumentSummary",
+        object_id=summary.id,
+        metadata={"patient_id": patient.id, "source_document_count": summary.source_document_count},
+    )
+    messages.success(request, "Patient intelligence summary generated.")
+    return redirect("documents:patient_docs", patient_id=patient.id)
 
 
 @login_required

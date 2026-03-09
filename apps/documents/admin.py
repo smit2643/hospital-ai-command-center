@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import DocumentExtractedField, DocumentExtraction, DocumentLabTest, OCRResult, PatientDocument
+from .models import (
+    DocumentExtractedField,
+    DocumentExtraction,
+    DocumentLabTest,
+    OCRResult,
+    PatientDocument,
+    PatientDocumentSummary,
+)
 
 
 @admin.register(PatientDocument)
@@ -40,3 +47,9 @@ class DocumentExtractionAdmin(admin.ModelAdmin):
     search_fields = ("document__id", "patient_name", "hospital_name", "doctor_name")
     list_filter = ("is_reviewed", "identity_verified")
     inlines = [DocumentLabTestInline, DocumentExtractedFieldInline]
+
+
+@admin.register(PatientDocumentSummary)
+class PatientDocumentSummaryAdmin(admin.ModelAdmin):
+    list_display = ("id", "patient", "source_document_count", "generated_by", "created_at")
+    search_fields = ("patient__user__full_name", "summary_text")
