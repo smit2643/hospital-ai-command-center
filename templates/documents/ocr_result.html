@@ -95,9 +95,8 @@
           <h3 class="h6 mb-2">{{ document.get_document_type_display }} OCR Fields</h3>
           {{ dynamic_formset.management_form }}
           {% for dynamic_form in dynamic_formset %}
-            {% if dynamic_form.visible_row %}
             {{ dynamic_form.field_key }}{{ dynamic_form.label }}{{ dynamic_form.value_type }}
-            <div class="mb-2">
+            <div class="mb-2" {% if not dynamic_form.visible_row %}style="display:none"{% endif %}>
               <label>{{ dynamic_form.display_label }}</label>
               {% if dynamic_form.display_type == 'TEXT' %}
                 {{ dynamic_form.value_text }}
@@ -105,7 +104,6 @@
                 {{ dynamic_form.value_short }}
               {% endif %}
             </div>
-            {% endif %}
           {% endfor %}
 
           {% if is_lab_report %}

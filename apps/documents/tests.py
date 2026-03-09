@@ -1,7 +1,9 @@
 from django.test import TestCase
+from django.forms import formset_factory
 from apps.accounts.models import User
 from apps.patients.models import PatientProfile
 
+from .forms import OCRDynamicFieldForm
 from .models import PatientDocument
 from .ocr import extract_identity, parse_document, parse_lab_report
 from .services import upsert_extraction_from_parsed
@@ -117,3 +119,24 @@ class OCRParserTests(TestCase):
         identity = extract_identity(text)
         self.assertEqual(identity["patient_name"], "Ananya Roy")
         self.assertEqual(identity["patient_dob"], "")
+
+    def test_dynamic_formset_valid_when_hidden_rows_posted(self):
+        DynamicFieldFormSet = formset_factory(OCRDynamicFieldForm, extra=0)
+        payload = {
+            "dynamic-TOTAL_FORMS": "2",
+            "dynamic-INITIAL_FORMS": "0",
+            "dynamic-MIN_NUM_FORMS": "0",
+            "dynamic-MAX_NUM_FORMS": "1000",
+            "dynamic-0-field_key": "doctor_name",
+            "dynamic-0-label": "Doctor Name",
+            "dynamic-0-value_type": "SHORT",
+            "dynamic-0-value_short": "Dr. A",
+            "dynamic-0-value_text": "",
+            "dynamic-1-field_key": "raw_ocr_text",
+            "dynamic-1-label": "Full OCR Text",
+            "dynamic-1-value_type": "TEXT",
+            "dynamic-1-value_short": "",
+            "dynamic-1-value_text": "raw text",
+        }
+        formset = DynamicFieldFormSet(payload, prefix="dynamic")
+        self.assertTrue(formset.is_valid())

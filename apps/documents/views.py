@@ -374,6 +374,7 @@ def ocr_result(request, document_id: int):
                 messages.success(request, "OCR details reviewed and saved successfully.")
 
             return redirect("documents:ocr_result", document_id=document.id)
+        messages.error(request, "Unable to save OCR details. Please check highlighted fields and try again.")
     else:
         form = OCRReviewForm(instance=extraction, initial={"signer_email": document.patient.user.email})
         formset = LabTestFormSet(initial=initial_test_rows, prefix="tests")
