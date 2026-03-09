@@ -235,7 +235,7 @@ class PatientSummaryTests(TestCase):
         summary = generate_patient_document_summary(self.patient, generated_by=self.doctor)
         self.assertIsInstance(summary, PatientDocumentSummary)
         self.assertEqual(summary.source_document_count, 1)
-        self.assertIn("Abnormal lab indicators", summary.summary_text)
+        self.assertIn("abnormal lab indicator(s)", summary.summary_text)
         self.assertEqual(summary.summary_data["document_count"], 1)
         self.assertEqual(len(summary.summary_data["abnormal_tests"]), 1)
 

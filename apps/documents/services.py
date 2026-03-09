@@ -286,27 +286,12 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
     if not docs:
         summary_text = "No documents are available for this patient yet."
     else:
-        top_abnormal = abnormal_tests[:5]
-        meds_preview = medications[:6]
-        diagnoses_preview = diagnoses[:6]
-
-        summary_parts = [
-            f"Patient has {len(docs)} document(s). OCR completed for {ocr_done} document(s).",
-        ]
-        if diagnoses_preview:
-            summary_parts.append("Potential diagnoses noted: " + "; ".join(diagnoses_preview) + ".")
-        if meds_preview:
-            summary_parts.append("Medications mentioned: " + "; ".join(meds_preview) + ".")
-        if top_abnormal:
-            abnormal_text = "; ".join(
-                f'{item["test_name"]}={item["value"]} {item["unit"]} (ref {item["reference_range"]})'
-                for item in top_abnormal
-            )
-            summary_parts.append("Abnormal lab indicators: " + abnormal_text + ".")
-        if notes:
-            summary_parts.append("Clinical notes highlights: " + " ".join(notes[:3]))
-        summary_parts.append("Recent records: " + " || ".join(lines[:5]))
-        summary_text = "\n".join(summary_parts)
+        summary_text = (
+            f"{len(docs)} document(s) processed, OCR complete for {ocr_done}. "
+            f"{len(abnormal_tests)} abnormal lab indicator(s), "
+            f"{len(medications)} medication mention(s), and "
+            f"{len(notes)} clinical note highlight(s) detected."
+        )
 
     summary_data = {
         "document_count": len(docs),

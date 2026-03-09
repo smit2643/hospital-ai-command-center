@@ -58,7 +58,12 @@
     <div class="summary-board mt-3">
       <div class="summary-header mb-3">
         <div class="summary-kicker">Executive Clinical Snapshot</div>
-        <div class="summary-lead">{{ latest_summary.summary_text|linebreaksbr }}</div>
+        <div class="summary-lead">
+          {{ latest_summary.summary_text }}
+          <div class="mt-2">
+            <small class="text-secondary">Use the cards below for detailed review by category.</small>
+          </div>
+        </div>
       </div>
 
       <div class="row g-3">
