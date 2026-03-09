@@ -1,7 +1,9 @@
 from django.test import TestCase
 from django.forms import formset_factory
 from apps.accounts.models import User
+from apps.doctors.models import DoctorProfile
 from apps.patients.models import PatientProfile
+from apps.patients.models import PatientDoctorAssignment
 
 from .forms import OCRDynamicFieldForm
 from .models import PatientDocument
@@ -140,3 +142,38 @@ class OCRParserTests(TestCase):
         }
         formset = DynamicFieldFormSet(payload, prefix="dynamic")
         self.assertTrue(formset.is_valid())
+
+    def test_patient_cannot_access_ocr_pages(self):
+        doctor = User.objects.create_user(
+            email="doc-perm@example.com",
+            full_name="Doc Perm",
+            role=User.Role.DOCTOR,
+            password="Secret123!",
+        )
+        doctor_profile = DoctorProfile.objects.create(
+            user=doctor,
+            specialization="General",
+            license_number="PERM-001",
+            years_experience=5,
+            approval_status=DoctorProfile.ApprovalStatus.APPROVED,
+        )
+        patient_user = User.objects.create_user(
+            email="pat-perm@example.com",
+            full_name="Pat Perm",
+            role=User.Role.PATIENT,
+            password="Secret123!",
+        )
+        patient = PatientProfile.objects.create(user=patient_user)
+        PatientDoctorAssignment.objects.create(patient=patient, doctor=doctor_profile, assigned_by=doctor)
+        document = PatientDocument.objects.create(
+            patient=patient,
+            uploaded_by=doctor,
+            file="patients/1/documents/perm.png",
+            document_type=PatientDocument.DocumentType.LAB_REPORT,
+        )
+
+        self.client.login(email=patient_user.email, password="Secret123!")
+        view_resp = self.client.get(f"/documents/{document.id}/ocr/result/")
+        trigger_resp = self.client.get(f"/documents/{document.id}/ocr/trigger/")
+        self.assertEqual(view_resp.status_code, 403)
+        self.assertEqual(trigger_resp.status_code, 403)

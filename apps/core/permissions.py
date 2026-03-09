@@ -16,3 +16,17 @@ def doctor_can_access_patient(user, patient_profile) -> bool:
     if user.role != user.Role.DOCTOR:
         return False
     return patient_profile.assignments.filter(doctor__user_id=user.id, is_active=True).exists()
+
+
+def doctor_is_approved(user) -> bool:
+    if user.is_superuser or user.role == user.Role.ADMIN:
+        return True
+    if user.role != user.Role.DOCTOR:
+        return False
+    profile = getattr(user, "doctor_profile", None)
+    return bool(profile and profile.is_approved)
+
+
+def require_approved_doctor(user):
+    if user.role == user.Role.DOCTOR and not doctor_is_approved(user):
+        raise PermissionDenied("Doctor account is pending approval.")

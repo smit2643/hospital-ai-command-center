@@ -1,6 +1,6 @@
 from rest_framework import permissions, response, status, viewsets
 from django.shortcuts import get_object_or_404
-from apps.core.permissions import doctor_can_access_patient
+from apps.core.permissions import doctor_can_access_patient, doctor_is_approved
 from .models import SignatureRequest
 from .serializers import SignatureRequestSerializer
 from .services import build_signature_expiry
@@ -25,6 +25,10 @@ class SignatureRequestCreateAPI(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request):
+        if request.user.role not in {request.user.Role.ADMIN, request.user.Role.DOCTOR}:
+            return response.Response({"detail": "Only admin/doctor can request signatures"}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role == request.user.Role.DOCTOR and not doctor_is_approved(request.user):
+            return response.Response({"detail": "Doctor account is pending approval"}, status=status.HTTP_403_FORBIDDEN)
         serializer = SignatureRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

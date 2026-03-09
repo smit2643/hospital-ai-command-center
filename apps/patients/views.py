@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from apps.accounts.forms import PatientRegistrationForm
 from apps.accounts.models import User
-from apps.core.permissions import doctor_can_access_patient, require_role
+from apps.core.permissions import doctor_can_access_patient, require_approved_doctor, require_role
 from apps.core.services import log_audit
 from .forms import AssignmentAdminUpdateForm, AssignmentForm, PatientProfileUpdateForm
 from .models import PatientDoctorAssignment, PatientProfile
@@ -61,6 +61,7 @@ def assign_doctor(request, patient_id: int):
 @login_required
 def patient_list(request):
     require_role(request.user, request.user.Role.ADMIN, request.user.Role.DOCTOR)
+    require_approved_doctor(request.user)
     if request.user.role == request.user.Role.ADMIN:
         patients = PatientProfile.objects.select_related("user").all().order_by("user__full_name")
     else:

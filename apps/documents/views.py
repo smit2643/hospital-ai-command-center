@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 import re
 
-from apps.core.permissions import doctor_can_access_patient, require_role
+from apps.core.permissions import doctor_can_access_patient, require_approved_doctor, require_role
 from apps.core.services import log_audit
 from apps.patients.models import PatientProfile
 from apps.signatures.models import SignatureRequest
@@ -22,6 +22,7 @@ from .tasks import process_document_ocr
 @login_required
 def upload(request):
     require_role(request.user, request.user.Role.ADMIN, request.user.Role.DOCTOR, request.user.Role.PATIENT)
+    require_approved_doctor(request.user)
     requested_patient_id = request.GET.get("patient")
     if not requested_patient_id:
         referer = request.META.get("HTTP_REFERER", "")
@@ -80,6 +81,7 @@ def upload(request):
 @login_required
 def patient_documents(request, patient_id: int):
     patient = get_object_or_404(PatientProfile.objects.select_related("user"), id=patient_id)
+    require_approved_doctor(request.user)
     if not doctor_can_access_patient(request.user, patient):
         require_role(request.user, request.user.Role.ADMIN)
 
@@ -87,12 +89,20 @@ def patient_documents(request, patient_id: int):
     return render(
         request,
         "documents/patient_documents.html",
-        {"patient": patient, "documents": docs, "can_manage_docs": request.user.role == request.user.Role.ADMIN},
+        {
+            "patient": patient,
+            "documents": docs,
+            "can_manage_docs": request.user.role == request.user.Role.ADMIN,
+            "can_use_ocr": request.user.role in {request.user.Role.ADMIN, request.user.Role.DOCTOR},
+            "can_request_signature": request.user.role in {request.user.Role.ADMIN, request.user.Role.DOCTOR},
+        },
     )
 
 
 @login_required
 def trigger_ocr(request, document_id: int):
+    require_role(request.user, request.user.Role.ADMIN, request.user.Role.DOCTOR)
+    require_approved_doctor(request.user)
     document = get_object_or_404(PatientDocument.objects.select_related("patient"), id=document_id)
     if not doctor_can_access_patient(request.user, document.patient):
         require_role(request.user, request.user.Role.ADMIN)
@@ -133,6 +143,8 @@ def delete_document(request, document_id: int):
 
 @login_required
 def ocr_status(request, document_id: int):
+    require_role(request.user, request.user.Role.ADMIN, request.user.Role.DOCTOR)
+    require_approved_doctor(request.user)
     document = get_object_or_404(PatientDocument.objects.select_related("patient"), id=document_id)
     if not doctor_can_access_patient(request.user, document.patient):
         require_role(request.user, request.user.Role.ADMIN)
@@ -221,6 +233,8 @@ def _decorate_dynamic_forms(dynamic_formset) -> None:
 
 @login_required
 def ocr_result(request, document_id: int):
+    require_role(request.user, request.user.Role.ADMIN, request.user.Role.DOCTOR)
+    require_approved_doctor(request.user)
     document = get_object_or_404(PatientDocument.objects.select_related("patient__user"), id=document_id)
     if not doctor_can_access_patient(request.user, document.patient):
         require_role(request.user, request.user.Role.ADMIN)

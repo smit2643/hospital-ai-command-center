@@ -1,5 +1,5 @@
 from rest_framework import decorators, permissions, response, status, viewsets
-from apps.core.permissions import doctor_can_access_patient
+from apps.core.permissions import doctor_can_access_patient, doctor_is_approved
 from .models import OCRResult, PatientDocument
 from .serializers import OCRResultSerializer, PatientDocumentSerializer
 from .tasks import process_document_ocr
@@ -17,6 +17,8 @@ class PatientDocumentViewSet(viewsets.ModelViewSet):
             return qs
         if user.role == user.Role.PATIENT:
             return qs.filter(patient__user=user)
+        if user.role == user.Role.DOCTOR and not doctor_is_approved(user):
+            return qs.none()
         return qs.filter(patient__assignments__doctor__user=user, patient__assignments__is_active=True).distinct()
 
     def perform_create(self, serializer):
@@ -38,6 +40,10 @@ class PatientDocumentViewSet(viewsets.ModelViewSet):
     @decorators.action(detail=True, methods=["post"])
     def trigger_ocr(self, request, pk=None):
         doc = self.get_object()
+        if request.user.role not in {request.user.Role.ADMIN, request.user.Role.DOCTOR}:
+            raise permissions.PermissionDenied("Only admin/doctor can run OCR")
+        if request.user.role == request.user.Role.DOCTOR and not doctor_is_approved(request.user):
+            raise permissions.PermissionDenied("Doctor account is pending approval")
         process_document_ocr.delay(doc.id)
         return response.Response({"detail": "OCR started"}, status=status.HTTP_202_ACCEPTED)
 
@@ -53,5 +59,7 @@ class OCRResultViewSet(viewsets.ReadOnlyModelViewSet):
         if user.is_superuser or user.role == user.Role.ADMIN:
             return qs
         if user.role == user.Role.PATIENT:
-            return qs.filter(document__patient__user=user)
+            return qs.none()
+        if user.role == user.Role.DOCTOR and not doctor_is_approved(user):
+            return qs.none()
         return qs.filter(document__patient__assignments__doctor__user=user).distinct()

@@ -20,7 +20,9 @@
       <div class="nav-actions">
         {% if user.is_authenticated %}
           <a class="btn btn-sm btn-light" href="/dashboard/">Dashboard</a>
+          {% if user.role == 'ADMIN' or user.role == 'DOCTOR' %}
           <a class="btn btn-sm btn-outline-light" href="/patients/">Patients</a>
+          {% endif %}
           <a class="btn btn-sm btn-outline-light" href="/documents/upload/">Upload</a>
           <a class="btn btn-sm btn-outline-light" href="/logout/">Logout</a>
         {% else %}

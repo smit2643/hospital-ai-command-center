@@ -1,7 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
-from apps.core.permissions import doctor_can_access_patient, require_role
+from apps.core.permissions import doctor_can_access_patient, require_approved_doctor, require_role
 from apps.core.services import log_audit
 from apps.documents.models import PatientDocument
 from .forms import SignatureRequestForm, SignatureSubmitForm
@@ -13,6 +13,7 @@ from .tasks import dispatch_signature_request_email
 @login_required
 def request_signature(request, document_id: int):
     require_role(request.user, request.user.Role.ADMIN, request.user.Role.DOCTOR)
+    require_approved_doctor(request.user)
     document = get_object_or_404(PatientDocument.objects.select_related("patient__user"), id=document_id)
     if not doctor_can_access_patient(request.user, document.patient):
         require_role(request.user, request.user.Role.ADMIN)
