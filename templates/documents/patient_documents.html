@@ -71,41 +71,6 @@
       </div>
 
       <div class="row g-3">
-        <div class="col-12">
-          <div class="summary-card summary-card--doctor">
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-              <h6 class="mb-0">Doctor-Ready Summary</h6>
-              <span class="status-pill status-info">
-                {{ latest_summary.summary_data.summary_provider|default:"rule_based" }}
-                {% if latest_summary.summary_data.summary_model %} · {{ latest_summary.summary_data.summary_model }}{% endif %}
-              </span>
-            </div>
-            {% if latest_summary.summary_data.doctor_ready_sections %}
-              <div class="summary-list">
-                {% for row in latest_summary.summary_data.doctor_ready_sections %}
-                <div class="summary-item">
-                  <small>{{ row }}</small>
-                </div>
-                {% endfor %}
-              </div>
-              {% if latest_summary.summary_data.summary_provider_requested and latest_summary.summary_data.summary_provider_requested != latest_summary.summary_data.summary_provider %}
-              <div class="alert alert-warning mt-2 mb-0">
-                {{ latest_summary.summary_data.summary_provider_requested|title }} requested but fallback used: {{ latest_summary.summary_data.summary_provider_error|default:"unknown reason" }}
-              </div>
-              {% endif %}
-              {% if latest_summary.summary_data.priority_flags %}
-              <div class="mt-2">
-                {% for flag in latest_summary.summary_data.priority_flags %}
-                <span class="kbd-pill me-1 mb-1">{{ flag }}</span>
-                {% endfor %}
-              </div>
-              {% endif %}
-            {% else %}
-              <p class="mb-0 text-secondary">No summary generated.</p>
-            {% endif %}
-          </div>
-        </div>
-
         <div class="col-lg-6">
           <div class="summary-card summary-card--abnormal">
             <h6>Abnormal Lab Indicators</h6>
