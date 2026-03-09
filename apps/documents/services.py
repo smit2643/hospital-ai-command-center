@@ -13,9 +13,11 @@ from .models import (
     DocumentExtractedField,
     DocumentExtraction,
     DocumentLabTest,
+    OCRResult,
     PatientDocument,
     PatientDocumentSummary,
 )
+from .ocr import run_ocr_pipeline
 from .schema import get_schema_for_document_type
 
 
@@ -344,6 +346,69 @@ def _llm_summary_quality_ok(sections: list[str]) -> bool:
     return token_count >= 16
 
 
+def _ensure_tesseract_extraction_for_summary(document: PatientDocument) -> None:
+    extraction = getattr(document, "extraction", None)
+    if extraction and (extraction.tests.exists() or extraction.extra_fields.exists() or extraction.notes.strip()):
+        return
+    if not document.file or not getattr(document.file, "path", ""):
+        return
+
+    original_provider = os.getenv("OCR_PROVIDER", "")
+    try:
+        # Force free local OCR source for summary hydration.
+        os.environ["OCR_PROVIDER"] = "tesseract"
+        result = run_ocr_pipeline(document.file.path, document.document_type)
+    except Exception:
+        return
+    finally:
+        if original_provider:
+            os.environ["OCR_PROVIDER"] = original_provider
+        else:
+            os.environ.pop("OCR_PROVIDER", None)
+
+    parsed = result.get("parsed", {}) if isinstance(result, dict) else {}
+    if not isinstance(parsed, dict) or parsed.get("error"):
+        return
+
+    OCRResult.objects.create(
+        document=document,
+        raw_text=result.get("raw_text", "") if isinstance(result, dict) else "",
+        parsed_fields=parsed,
+        parser_version="v2-summary-hydrate",
+    )
+    upsert_extraction_from_parsed(
+        document,
+        parsed,
+        raw_text=result.get("raw_text", "") if isinstance(result, dict) else "",
+        identity_verified=False,
+        identity_message="Hydrated for patient summary from Tesseract OCR.",
+    )
+    if document.ocr_status != PatientDocument.OCRStatus.DONE:
+        document.ocr_status = PatientDocument.OCRStatus.DONE
+        document.save(update_fields=["ocr_status", "updated_at"])
+
+
+def _contains_nonclinical_text(text: str) -> bool:
+    probe = (text or "").lower()
+    bad_fragments = [
+        "ocr stack",
+        "free ocr",
+        "audit trail",
+        "api-ready",
+        "modular",
+        "deployment",
+        "signature hash",
+        "compliance readiness",
+        "workflow internals",
+        "platform",
+        "api architecture",
+        "free_ocr_stack",
+        "complete_audit_trail",
+        "modular_api_ready",
+    ]
+    return any(fragment in probe for fragment in bad_fragments)
+
+
 def generate_patient_document_summary(patient, generated_by=None) -> PatientDocumentSummary:
     documents = (
         patient.documents.select_related("uploaded_by")
@@ -351,6 +416,10 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
         .order_by("-created_at")
     )
     docs = list(documents)
+
+    # Ensure each document has extracted clinical data before building the summary.
+    for document in docs:
+        _ensure_tesseract_extraction_for_summary(document)
 
     lines = []
     abnormal_tests: list[dict] = []
@@ -525,12 +594,15 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             else:
                 cleaned_sections = doctor_ready_sections
 
-            if _llm_summary_quality_ok(cleaned_sections):
+            # Always keep doctor summary sections grounded in extracted patient docs.
+            # LLM is allowed to enhance only high-level sentence + optional flags.
+            if _llm_summary_quality_ok(cleaned_sections) and not _contains_nonclinical_text(candidate_summary):
                 summary_data["doctor_ready_summary"] = candidate_summary
-                summary_data["doctor_ready_sections"] = cleaned_sections
                 flags = llm_result.get("priority_flags", [])
                 if isinstance(flags, list):
-                    summary_data["priority_flags"] = [str(item).strip() for item in flags if str(item).strip()]
+                    safe_flags = [str(item).strip() for item in flags if str(item).strip() and not _contains_nonclinical_text(str(item))]
+                    if safe_flags:
+                        summary_data["priority_flags"] = safe_flags
                 summary_data["summary_provider"] = llm_provider
                 summary_data["summary_model"] = str(llm_result.get("_meta_model", "")).strip()
                 summary_text = summary_data["doctor_ready_summary"]
