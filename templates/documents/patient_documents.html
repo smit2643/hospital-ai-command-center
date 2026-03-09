@@ -73,7 +73,10 @@
       <div class="row g-3">
         <div class="col-12">
           <div class="summary-card summary-card--doctor">
-            <h6>Doctor-Ready Summary</h6>
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+              <h6 class="mb-0">Doctor-Ready Summary</h6>
+              <span class="status-pill status-info">{{ latest_summary.summary_data.summary_provider|default:"rule_based" }}</span>
+            </div>
             {% if latest_summary.summary_data.doctor_ready_sections %}
               <div class="summary-list">
                 {% for row in latest_summary.summary_data.doctor_ready_sections %}
@@ -82,6 +85,13 @@
                 </div>
                 {% endfor %}
               </div>
+              {% if latest_summary.summary_data.priority_flags %}
+              <div class="mt-2">
+                {% for flag in latest_summary.summary_data.priority_flags %}
+                <span class="kbd-pill me-1 mb-1">{{ flag }}</span>
+                {% endfor %}
+              </div>
+              {% endif %}
             {% else %}
               <p class="mb-0 text-secondary">No summary generated.</p>
             {% endif %}

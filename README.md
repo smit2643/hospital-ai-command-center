@@ -112,6 +112,15 @@ For local testing without SMTP:
 - Stored output:
   - `summary_text` (concise executive sentence)
   - `summary_data` (structured JSON for UI cards + doctor-ready narrative + trends)
+- Summary provider options:
+  - `rule_based` (default, no API usage)
+  - `gemini` (free-tier capable when API key is configured)
+- Environment toggles:
+  - `SUMMARY_LLM_PROVIDER=rule_based|gemini`
+  - `SUMMARY_GEMINI_MODEL=gemini-1.5-flash` (optional override)
+  - `GEMINI_API_KEY=...` (required only for Gemini mode)
+- Fallback behavior:
+  - If Gemini key/dependency/API call fails, system keeps rule-based summary generation.
 - Abnormal test logic:
   - Numeric value is parsed from test value text.
   - Reference ranges like `12.0-16.0` / `70-100` / `12 to 16` are parsed safely.

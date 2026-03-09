@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import re
 
 from django.utils import timezone
@@ -215,6 +217,63 @@ def _extract_year(text: str, fallback_year: int) -> int:
     return fallback_year
 
 
+def _extract_json_from_text(raw: str) -> dict:
+    text = (raw or "").strip()
+    if not text:
+        return {}
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return {}
+    try:
+        return json.loads(text[start : end + 1])
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _gemini_llm_summary(*, patient_name: str, payload: dict) -> dict | None:
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return None
+    try:
+        import google.generativeai as genai  # type: ignore
+    except Exception:
+        return None
+
+    model_name = os.getenv("SUMMARY_GEMINI_MODEL", os.getenv("GEMINI_MODEL", "gemini-1.5-flash")).strip()
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(model_name)
+
+    prompt = (
+        "You are a clinical summarization assistant.\n"
+        "Return only valid JSON with keys:\n"
+        '{'
+        '"doctor_ready_summary": "one concise sentence", '
+        '"doctor_ready_sections": ["short bullet 1", "short bullet 2"], '
+        '"priority_flags": ["flag 1", "flag 2"]'
+        "}\n"
+        "Constraints:\n"
+        "- Keep concise and doctor-friendly.\n"
+        "- Use only provided data.\n"
+        "- Mention timeline/trend direction when present.\n"
+        f"Patient: {patient_name}\n"
+        f"Data: {json.dumps(payload, ensure_ascii=True)}"
+    )
+    try:
+        response = model.generate_content(prompt)
+    except Exception:
+        return None
+    parsed = _extract_json_from_text(getattr(response, "text", "") or "")
+    if not isinstance(parsed, dict):
+        return None
+    if not parsed.get("doctor_ready_summary") or not isinstance(parsed.get("doctor_ready_sections"), list):
+        return None
+    return parsed
+
+
 def generate_patient_document_summary(patient, generated_by=None) -> PatientDocumentSummary:
     documents = (
         patient.documents.select_related("uploaded_by")
@@ -369,7 +428,35 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
         "notes": notes[:10],
         "test_trends": test_trends,
         "timeline": timeline,
+        "summary_provider": "rule_based",
     }
+
+    llm_provider = os.getenv("SUMMARY_LLM_PROVIDER", "rule_based").strip().lower()
+    if llm_provider == "gemini":
+        llm_payload = {
+            "abnormal_tests": abnormal_tests[:12],
+            "medications": medications[:20],
+            "diagnoses": diagnoses[:20],
+            "notes": notes[:10],
+            "test_trends": test_trends[:12],
+            "timeline": timeline[:15],
+            "document_type_breakdown": doc_types,
+            "document_count": len(docs),
+        }
+        llm_result = _gemini_llm_summary(
+            patient_name=patient.user.full_name if getattr(patient, "user", None) else "",
+            payload=llm_payload,
+        )
+        if llm_result:
+            summary_data["doctor_ready_summary"] = str(llm_result.get("doctor_ready_summary", doctor_ready_summary)).strip()
+            sections = llm_result.get("doctor_ready_sections", doctor_ready_sections)
+            if isinstance(sections, list):
+                summary_data["doctor_ready_sections"] = [str(item).strip() for item in sections if str(item).strip()]
+            flags = llm_result.get("priority_flags", [])
+            if isinstance(flags, list):
+                summary_data["priority_flags"] = [str(item).strip() for item in flags if str(item).strip()]
+            summary_data["summary_provider"] = "gemini"
+            summary_text = summary_data["doctor_ready_summary"]
 
     return PatientDocumentSummary.objects.create(
         patient=patient,
