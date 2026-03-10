@@ -241,7 +241,7 @@ def _extract_json_from_text(raw: str) -> dict:
 
 def _ollama_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | None, str]:
     base_url = os.getenv("SUMMARY_OLLAMA_BASE_URL", "http://ollama:11434").strip().rstrip("/")
-    model = os.getenv("SUMMARY_OLLAMA_MODEL", "qwen2.5:0.5b").strip()
+    model = os.getenv("SUMMARY_OLLAMA_MODEL", "gpt-oss:120b-cloud").strip()
     endpoint = f"{base_url}/api/generate"
 
     prompt = (

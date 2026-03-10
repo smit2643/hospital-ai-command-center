@@ -118,7 +118,7 @@ For local testing without SMTP:
 - Environment toggles:
   - `SUMMARY_LLM_PROVIDER=rule_based|ollama`
   - `SUMMARY_OLLAMA_BASE_URL=http://ollama:11434`
-  - `SUMMARY_OLLAMA_MODEL=qwen2.5:0.5b`
+  - `SUMMARY_OLLAMA_MODEL=gpt-oss:120b-cloud`
 - Fallback behavior:
   - If Ollama fails, system keeps rule-based summary generation and stores error reason in summary metadata/UI.
 - Abnormal test logic:
