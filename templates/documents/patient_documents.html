@@ -62,6 +62,9 @@
           {{ latest_summary.summary_data.summary_provider|default:"rule_based" }}
           {% if latest_summary.summary_data.summary_model %} · {{ latest_summary.summary_data.summary_model }}{% endif %}
         </span>
+        <div class="text-secondary" style="font-size: 12px;">
+          Provider: {{ latest_summary.summary_data.summary_provider|default:"rule_based" }}{% if latest_summary.summary_data.summary_model %} ({{ latest_summary.summary_data.summary_model }}){% endif %}
+        </div>
         <div class="summary-lead">
           {{ latest_summary.summary_data.document_count|default:latest_summary.source_document_count }} document(s) processed,
           OCR complete for {{ latest_summary.summary_data.ocr_done_count|default:0 }}.
