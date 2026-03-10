@@ -328,7 +328,7 @@ def _ollama_llm_summary(*, patient_name: str, payload: dict) -> tuple[dict | Non
 
 
 def _llm_summary_quality_ok(sections: list[str]) -> bool:
-    if len(sections) < 3:
+    if len(sections) < 2:
         return False
     joined = " ".join(sections).lower()
     banned = [
@@ -341,9 +341,9 @@ def _llm_summary_quality_ok(sections: list[str]) -> bool:
     ]
     if any(word in joined for word in banned):
         return False
-    # Ensure minimum information density
+    # Minimum density check; relaxed for small local models.
     token_count = len([tok for tok in joined.split() if tok.strip()])
-    return token_count >= 16
+    return token_count >= 8
 
 
 def _ensure_tesseract_extraction_for_summary(document: PatientDocument) -> None:
@@ -594,9 +594,8 @@ def generate_patient_document_summary(patient, generated_by=None) -> PatientDocu
             else:
                 cleaned_sections = doctor_ready_sections
 
-            # Always keep doctor summary sections grounded in extracted patient docs.
-            # LLM is allowed to enhance only high-level sentence + optional flags.
-            if _llm_summary_quality_ok(cleaned_sections) and not _contains_nonclinical_text(candidate_summary):
+            # Keep summaries clinical. If LLM returns valid JSON, prefer it unless it looks nonclinical.
+            if cleaned_sections and not _contains_nonclinical_text(candidate_summary):
                 summary_data["doctor_ready_summary"] = candidate_summary
                 flags = llm_result.get("priority_flags", [])
                 if isinstance(flags, list):
