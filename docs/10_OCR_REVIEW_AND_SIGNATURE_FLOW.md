@@ -35,5 +35,5 @@ Document table shows:
 
 ## OCR Provider Notes
 - Default: open-source Tesseract (`OCR_PROVIDER=tesseract`)
-- Optional: Gemini provider (`OCR_PROVIDER=gemini` + key)
+- Optional: Ollama mapping (`OCR_LLM_PROVIDER=ollama`, `OCR_OLLAMA_MODEL=gpt-oss:120b-cloud`)
 - Parser includes typo-tolerant key matching and schema-mapping fallback.

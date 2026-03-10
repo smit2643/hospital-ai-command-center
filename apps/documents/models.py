@@ -129,3 +129,18 @@ class DocumentExtractedField(models.Model):
     class Meta:
         ordering = ["order_index", "id"]
         unique_together = ("extraction", "field_key")
+
+
+class PatientDocumentSummary(models.Model):
+    patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE, related_name="document_summaries")
+    generated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    source_document_count = models.PositiveIntegerField(default=0)
+    summary_text = models.TextField(blank=True)
+    summary_data = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Patient summary #{self.id} for patient #{self.patient_id}"

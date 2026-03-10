@@ -1,15 +1,145 @@
 # Hospital AI Command Center
 
-A competition-ready hospital management platform built with Django, PostgreSQL, OCR, asynchronous processing, and secure e-sign workflows.
+Production-style hospital workflow platform with role-based access, OCR-assisted document processing, and secure e-signature lifecycle.
 
-## Why this project stands out
-- End-to-end healthcare document lifecycle: upload -> OCR -> extract -> review -> sign -> archive.
-- Multi-role workflow with strict access controls: `Admin`, `Doctor`, `Patient`.
-- Signature trust layer with SHA-256 integrity hash and full audit trail.
-- Async architecture (Celery + Redis) built for real workloads.
-- Deployment-ready packaging with Docker, migrations, seed data, and API layer.
+## Current implemented flow
+1. User login with role: `Admin`, `Doctor`, `Patient`.
+2. Doctor registration requires admin approval before protected doctor actions.
+3. Admin/approved doctor manages patient records and assignments.
+4. Documents are uploaded to a patient vault.
+5. OCR is run from the document review screen.
+6. Extracted values are shown as editable fields and can be saved.
+7. Admin/doctor can generate a patient-level summary across all uploaded documents.
+8. Summary renders as a structured intelligence board (not raw OCR dump): doctor-ready summary, abnormal tests, medications, notes, and timelines.
+9. System builds normalized year-wise medical test trends across documents (example: `Hemoglobin -> 2021: 11.2, 2022: 10.5, 2023: 9.1`).
+10. Summary headline is generated from structured `summary_data` for stable UI readability.
+11. From OCR review, user can `Save` or `Save + Send For Signature`.
+12. Patient receives signature email with secure tokenized link.
+13. Patient signs on the signing page (draw + place signature on document).
+14. Signed PDF is generated, stored, and downloadable from patient documents list.
 
-## Documentation Pack
+## Role permissions (enforced in UI + backend)
+- `Admin`
+  - Full access across users, patients, documents, OCR, signature workflows.
+- `Doctor`
+  - Must be approved.
+  - Can access assigned patients and related documents/flows.
+- `Patient`
+  - Can view/update own profile and upload own documents.
+  - Cannot access global patient list, OCR execution/review, or signature-request creation.
+
+## Key features live now
+- Custom user model with role-based access control.
+- Doctor approval workflow for operational safety.
+- Patient profile management (expanded profile fields).
+- Patient document vault with add/list/detail actions.
+- Patient intelligence summary card (cross-document clinical snapshot).
+- Structured patient intelligence board with sections:
+  - Executive headline (from `summary_data`)
+  - Doctor-ready consolidated summary
+  - Abnormal lab indicators
+  - Health history timeline (year-wise test trends)
+  - Medication mentions
+  - Clinical notes highlights
+  - Recent document timeline
+- OCR extraction workflow with editable mapped fields.
+- OCR live status checks (no manual full-page workflow dependency).
+- Signature email request flow with styled HTML email template.
+- Token-based signature page with signature placement.
+- Signed artifact storage and signed-document download action in vault.
+- DRF API namespace under `/api/v1/`.
+
+## Technology stack
+- Django 5 + Django REST Framework
+- PostgreSQL (`psycopg`)
+- Celery + Redis
+- Tesseract OCR + OpenCV + Pillow
+- ReportLab (signed PDF generation)
+- Docker Compose
+
+## Run with Docker (recommended)
+1. Create env file:
+   - `cp .env.example .env`
+2. Start services:
+   - `docker compose up --build -d`
+3. Run migrations:
+   - `docker compose exec web python manage.py migrate`
+4. Seed demo data:
+   - `docker compose exec web python manage.py seed_demo`
+5. Open app:
+   - `http://localhost:8000`
+
+If `service "web" is not running`, start the stack first with `docker compose up -d`.
+
+## Demo credentials (`seed_demo`)
+- Admin: `admin@hospitalai.local` / `DemoPass@123`
+- Doctor: `doctor@hospitalai.local` / `DemoPass@123`
+- Patient: `patient@hospitalai.local` / `DemoPass@123`
+
+## Email setup (signature delivery)
+Configure in `.env`:
+- `EMAIL_HOST`
+- `EMAIL_PORT`
+- `EMAIL_USE_TLS`
+- `EMAIL_HOST_USER`
+- `EMAIL_HOST_PASSWORD`
+- `DEFAULT_FROM_EMAIL`
+- `SITE_BASE_URL` (must be reachable by recipient for sign link)
+
+For local testing without SMTP:
+- `EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend`
+
+## Important routes
+- `/login/`
+- `/register/doctor/`
+- `/register/patient/`
+- `/admin/doctor-approvals/`
+- `/patients/`
+- `/patients/<id>/documents/`
+- `/documents/upload/`
+- `/documents/<id>/ocr/result/`
+- `/signatures/request/<document_id>/`
+- `/sign/<token>/`
+
+## Patient Summary Logic (Current)
+- Model: `PatientDocumentSummary`
+- Trigger: `POST /patients/<id>/documents/summary/generate/`
+- Data sources:
+  - `PatientDocument`
+  - `DocumentExtraction`
+  - `DocumentLabTest`
+  - `DocumentExtractedField`
+- Stored output:
+  - `summary_text` (concise executive sentence)
+  - `summary_data` (structured JSON for UI cards + doctor-ready narrative + trends)
+- Summary provider options:
+  - `rule_based` (default, no API usage)
+  - `ollama` (local open-source LLM, no API billing)
+- Environment toggles:
+  - `SUMMARY_LLM_PROVIDER=rule_based|ollama`
+  - `SUMMARY_OLLAMA_BASE_URL=http://ollama:11434`
+  - `SUMMARY_OLLAMA_MODEL=gpt-oss:120b-cloud`
+- Fallback behavior:
+  - If Ollama fails, system keeps rule-based summary generation and stores error reason in summary metadata/UI.
+- Abnormal test logic:
+  - Numeric value is parsed from test value text.
+  - Reference ranges like `12.0-16.0` / `70-100` / `12 to 16` are parsed safely.
+  - Test is marked abnormal only if value is outside `[low, high]`.
+- Timeline logic:
+  - Report year is taken from report date text when available.
+  - Otherwise document creation year is used as fallback.
+  - Numeric test values are grouped by test name and sorted year-wise.
+- UX note:
+  - If old summary content is visible, click `Regenerate Summary` to rebuild using latest logic.
+
+## API highlights
+- `/api/v1/auth/login/`
+- `/api/v1/auth/me/`
+- `/api/v1/documents/`
+- `/api/v1/ocr-results/`
+- `/api/v1/signature-requests/`
+
+## Documentation
 - [Executive Summary](docs/01_EXECUTIVE_SUMMARY.md)
 - [Problem and Solution Fit](docs/02_PROBLEM_SOLUTION.md)
 - [System Architecture](docs/03_SYSTEM_ARCHITECTURE.md)
@@ -21,110 +151,3 @@ A competition-ready hospital management platform built with Django, PostgreSQL, 
 - [Branching Strategy](docs/09_BRANCHING_STRATEGY.md)
 - [OCR Review + Signature Flow](docs/10_OCR_REVIEW_AND_SIGNATURE_FLOW.md)
 - [Admin + Patient Profile Enhancements](docs/11_ADMIN_AND_PATIENT_PROFILE_ENHANCEMENTS.md)
-
-## Git Workflow
-- Default branch: `main`
-- Integration branch: `develop`
-- Feature branches by capability (auth, doctor, patient, OCR, signature, UI, API)
-- Supporting branches for `devops`, `docs`, `release`, and `hotfix`
-- CI workflow added at `.github/workflows/ci.yml`
-
-## Core capabilities
-- Doctor and patient registration
-- Admin doctor approval queue
-- Patient-doctor assignment
-- Admin assignment edit/remove controls
-- Complete patient profile (demographics, address, clinical context, insurance, emergency details)
-- Document versioning and metadata tracking
-- Admin document edit/delete controls
-- OCR extraction with document-type-aware schema mapping
-- Relational OCR storage (`DocumentExtraction`, `DocumentExtractedField`, `DocumentLabTest`)
-- Signature request by email via secure token links
-- OCR review console with editable extracted fields before final save
-- Live OCR status updates on review page (auto-refresh on completion)
-- Full OCR text fallback retained for unmatched extracted values
-- Optional send-for-signature from OCR review screen
-- Public sign endpoint with expiration guard
-- Signed PDF artifact storage and hash persistence
-- Audit logging across sensitive operations
-- REST API namespace: `/api/v1/`
-
-## Tech stack
-- Django 5, DRF
-- PostgreSQL (`psycopg`)
-- Celery + Redis
-- Tesseract OCR + OpenCV + Pillow
-- ReportLab for signed PDFs
-- Docker + docker-compose
-
-## Quickstart (Docker, recommended)
-1. Copy env:
-   - `cp .env.example .env`
-2. Start stack:
-   - `docker compose up --build -d`
-3. Seed demo users:
-   - `docker compose exec web python manage.py seed_demo`
-4. Open app:
-   - `http://localhost:8000`
-
-## Quickstart (local)
-1. Create venv and install dependencies:
-   - `python3 -m venv .venv`
-   - `source .venv/bin/activate`
-   - `pip install -r requirements.txt`
-2. Install system dependencies:
-   - Ubuntu/Debian: `sudo apt install tesseract-ocr`
-3. Configure env:
-   - `cp .env.example .env`
-4. Run DB migrations:
-   - `python manage.py migrate`
-5. Create superuser or seed demo:
-   - `python manage.py createsuperuser`
-   - or `python manage.py seed_demo`
-6. Run app and worker:
-   - `python manage.py runserver`
-   - `celery -A hospital_ai worker -l info`
-
-## Demo credentials (after `seed_demo`)
-- Admin: `admin@hospitalai.local` / `DemoPass@123`
-- Doctor: `doctor@hospitalai.local` / `DemoPass@123`
-- Patient: `patient@hospitalai.local` / `DemoPass@123`
-
-## Important routes
-- `/register/doctor/`
-- `/register/patient/`
-- `/admin/doctor-approvals/`
-- `/patients/`
-- `/documents/upload/`
-- `/patients/<id>/documents/`
-- `/documents/<id>/ocr/trigger/`
-- `/documents/<id>/ocr/status/`
-- `/signatures/request/<document_id>/`
-- `/sign/<token>/`
-- `/health/`
-
-## API routes
-- `/api/v1/health/`
-- `/api/v1/auth/login/`
-- `/api/v1/auth/me/`
-- `/api/v1/doctors/pending/`
-- `/api/v1/documents/`
-- `/api/v1/ocr-results/`
-- `/api/v1/signature-requests/`
-
-## Environment variables
-Use `.env.example` as baseline. Most important:
-- `DATABASE_URL`
-- `SITE_BASE_URL`
-- `EMAIL_*`
-- `REDIS_URL`, `CELERY_BROKER_URL`
-- `SIGN_LINK_TTL_HOURS`
-
-## Notes
-- OCR in v1 is tuned for image-based lab reports (`png/jpg/jpeg/tiff/bmp`).
-- Sample OCR document: `sample_data/hospital_dummy_lab_report.png`
-- You can regenerate sample: `docker compose exec web python scripts/generate_dummy_lab_report.py`
-- OCR provider defaults to open-source Tesseract. Optional Gemini integration is supported via env variables.
-- For laptop-only demo without worker, set `CELERY_TASK_ALWAYS_EAGER=True`.
-- For local testing without SMTP, set:
-  - `EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend`

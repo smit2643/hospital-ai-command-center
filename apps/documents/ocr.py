@@ -1,5 +1,8 @@
+import json
 import os
 import re
+import urllib.error
+import urllib.request
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -10,6 +13,7 @@ import pytesseract
 from PIL import Image
 
 from .models import PatientDocument
+from .schema import get_schema_for_document_type
 
 
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -47,32 +51,6 @@ def preprocess_image(file_path: str) -> np.ndarray:
 def extract_text(file_path: str) -> str:
     processed = preprocess_image(file_path)
     return pytesseract.image_to_string(processed)
-
-
-def extract_text_with_gemini(file_path: str) -> str:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY not configured")
-    try:
-        import google.generativeai as genai  # type: ignore
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("google-generativeai dependency is missing") from exc
-
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-1.5-flash"))
-    with open(file_path, "rb") as f:
-        file_bytes = f.read()
-    prompt = "Extract all readable text from this hospital document with line structure preserved."
-    response = model.generate_content(
-        [
-            prompt,
-            {"mime_type": "image/png", "data": file_bytes},
-        ]
-    )
-    text = getattr(response, "text", "") or ""
-    if not text.strip():
-        raise RuntimeError("Gemini OCR response was empty")
-    return text
 
 
 def _normalize_key(value: str) -> str:
@@ -390,6 +368,246 @@ def parse_document(raw_text: str, document_type: str) -> dict[str, Any]:
     return parse_key_value_document(raw_text, document_type=PatientDocument.DocumentType.OTHER)
 
 
+def _extract_json_from_text(raw: str) -> dict:
+    text = (raw or "").strip()
+    if not text:
+        return {}
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return {}
+    try:
+        return json.loads(text[start : end + 1])
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _ollama_map_fields(raw_text: str, document_type: str) -> tuple[dict | None, str, str]:
+    provider = os.getenv("OCR_LLM_PROVIDER", "ollama").strip().lower()
+    if provider != "ollama":
+        return None, "", ""
+
+    base_url = os.getenv("OCR_OLLAMA_BASE_URL", "http://ollama:11434").strip().rstrip("/")
+    model = os.getenv("OCR_OLLAMA_MODEL", "gpt-oss:120b-cloud").strip()
+    fallback_model = os.getenv("OCR_OLLAMA_FALLBACK_MODEL", "qwen2.5:0.5b").strip()
+    endpoint = f"{base_url}/api/generate"
+
+    schema = get_schema_for_document_type(document_type)
+    schema_keys = [item["key"] for item in schema]
+    max_chars = int(os.getenv("OCR_OLLAMA_MAX_CHARS", "8000").strip() or "8000")
+    ocr_text = raw_text[:max_chars]
+
+    prompt = (
+        "You are a medical document extraction assistant.\n"
+        "Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:\n"
+        '{'
+        '"report_date": "YYYY-MM-DD or empty", '
+        '"hospital_name": "string", '
+        '"doctor_name": "string", '
+        '"notes": "string", '
+        '"tests": [{"test_name":"", "value":"", "unit":"", "reference_range":""}], '
+        '"document_fields": [{"key":"", "value_short":"", "value_text":""}]'
+        "}\n"
+        "Rules:\n"
+        "- Use only the OCR text.\n"
+        "- For document_fields, only use keys from this allowed list:\n"
+        f"{schema_keys}\n"
+        "- If a value is missing, use empty string.\n"
+        "- Keep value_short for short values (dates, IDs, short names). Use value_text for paragraphs.\n"
+        f"Document type: {document_type}\n"
+        f"OCR text:\n{ocr_text}\n"
+    )
+    num_predict = int(os.getenv("OCR_OLLAMA_NUM_PREDICT", "400").strip() or "400")
+    temperature = float(os.getenv("OCR_OLLAMA_TEMPERATURE", "0.1").strip() or "0.1")
+
+    def _call_ollama(*, use_format: bool, compact_prompt: bool = False, model_name: str | None = None) -> tuple[str, str]:
+        model_value = model_name or model
+        body_obj = {
+            "model": model_value,
+            "prompt": prompt if not compact_prompt else (
+                "Return ONLY valid JSON with keys: "
+                "report_date, hospital_name, doctor_name, notes, tests, document_fields. "
+                f"Doc type: {document_type}. "
+                f"OCR: {ocr_text}"
+            ),
+            "stream": False,
+            "options": {"temperature": temperature, "num_predict": num_predict},
+        }
+        if use_format:
+            body_obj["format"] = "json"
+        body = json.dumps(body_obj).encode("utf-8")
+        req = urllib.request.Request(endpoint, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
+                return resp.read().decode("utf-8", errors="ignore"), ""
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="ignore")
+            return "", f"Ollama HTTP {exc.code}: {detail[:240]}"
+        except urllib.error.URLError as exc:
+            reason = str(exc.reason)
+            if "Connection refused" in reason or "refused" in reason.lower():
+                return "", f"Ollama is not running at {base_url}."
+            return "", f"Ollama connection error: {reason[:200]}"
+        except Exception as exc:  # noqa: BLE001
+            return "", f"Ollama call failed: {exc.__class__.__name__}: {exc}"
+
+    def _parse_response(raw: str) -> tuple[dict, str]:
+        if not raw:
+            return {}, "empty response"
+        envelope = _extract_json_from_text(raw)
+        response_text = str(envelope.get("response", "")).strip()
+        if not response_text and raw.strip():
+            parts = []
+            for line in raw.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    parts.append(str(obj.get("response", "")))
+                except Exception:  # noqa: BLE001
+                    pass
+            response_text = "".join(parts).strip()
+        if not response_text:
+            return {}, "empty response"
+        parsed = _extract_json_from_text(response_text)
+        if not parsed:
+            parsed = _extract_json_from_text(raw)
+        if not parsed:
+            return {}, "invalid json"
+        return parsed, ""
+
+    raw, err = _call_ollama(use_format=True, compact_prompt=False, model_name=model)
+    if err:
+        return None, model, err
+    parsed, parse_err = _parse_response(raw)
+    if not parsed:
+        # Some cloud models ignore/struggle with the "format" param. Retry without it.
+        raw, err = _call_ollama(use_format=False, compact_prompt=False, model_name=model)
+        if err:
+            return None, model, err
+        parsed, parse_err = _parse_response(raw)
+    if not parsed:
+        # Final fallback: compact prompt, no format.
+        raw, err = _call_ollama(use_format=False, compact_prompt=True, model_name=model)
+        if err:
+            return None, model, err
+        parsed, parse_err = _parse_response(raw)
+    if not parsed:
+        if fallback_model and fallback_model != model:
+            raw, err = _call_ollama(use_format=False, compact_prompt=True, model_name=fallback_model)
+            if err:
+                return None, model, err
+            parsed, parse_err = _parse_response(raw)
+            if parsed:
+                return parsed, fallback_model, ""
+        return None, model, f"Ollama response was {parse_err or 'empty'} for model '{model}'."
+
+    parsed.setdefault("document_fields", [])
+    parsed.setdefault("tests", [])
+    return parsed, model, ""
+
+
+def _merge_parsed(rule_based: dict[str, Any], llm_parsed: dict[str, Any] | None, document_type: str) -> dict[str, Any]:
+    if not llm_parsed:
+        return rule_based
+
+    def _normalize_test_row(row: dict[str, Any]) -> dict[str, Any]:
+        name = str(row.get("test_name", "") or "").strip()
+        value = str(row.get("value", "") or "").strip()
+        unit = str(row.get("unit", "") or "").strip()
+        ref = str(row.get("reference_range", "") or "").strip()
+
+        if value and not unit:
+            match = re.match(r"^(-?\d+(?:\.\d+)?)(?:\s+)([A-Za-zµ/%].+)$", value)
+            if match:
+                value, unit = match.group(1), match.group(2).strip()
+
+        if unit and len(unit) <= 2 and re.search(r"[A-Za-zµ/%]", value):
+            match = re.match(r"^(-?\d+(?:\.\d+)?)(?:\s+)([A-Za-zµ/%].+)$", value)
+            if match:
+                value, unit = match.group(1), match.group(2).strip()
+
+        if unit == "f" and ref:
+            unit = "ful"
+
+        return {"test_name": name, "value": value, "unit": unit, "reference_range": ref}
+
+    def _merge_tests(rule_tests: list[dict[str, Any]], llm_tests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not rule_tests and not llm_tests:
+            return []
+
+        def key_for(name: str) -> str:
+            return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", name.lower())).strip()
+
+        rule_norm = {}
+        for row in rule_tests:
+            norm = key_for(str(row.get("test_name", "")))
+            if norm:
+                rule_norm[norm] = row
+
+        merged_rows = []
+        for row in rule_tests:
+            merged_rows.append(_normalize_test_row(row))
+
+        for row in llm_tests:
+            normalized = _normalize_test_row(row)
+            name_key = key_for(normalized["test_name"])
+            if not name_key:
+                continue
+            if name_key in rule_norm:
+                base = _normalize_test_row(rule_norm[name_key])
+                if not normalized["value"]:
+                    normalized["value"] = base["value"]
+                if not normalized["unit"]:
+                    normalized["unit"] = base["unit"]
+                if not normalized["reference_range"]:
+                    normalized["reference_range"] = base["reference_range"]
+                # Prefer rule-based row when it has a better unit/value pairing.
+                if base["unit"] and len(base["unit"]) > len(normalized["unit"]):
+                    normalized["unit"] = base["unit"]
+                if base["value"] and re.search(r"[A-Za-zµ/%]", normalized["value"]):
+                    normalized["value"] = base["value"]
+                continue
+            merged_rows.append(normalized)
+
+        return merged_rows
+
+    merged = dict(rule_based)
+    for key in ("patient_name", "report_date", "hospital_name", "doctor_name", "notes"):
+        value = str(llm_parsed.get(key, "") or "").strip()
+        if value:
+            merged[key] = value
+
+    llm_tests = llm_parsed.get("tests")
+    rule_tests = rule_based.get("tests", [])
+    if isinstance(llm_tests, list) or isinstance(rule_tests, list):
+        merged["tests"] = _merge_tests(
+            rule_tests if isinstance(rule_tests, list) else [],
+            llm_tests if isinstance(llm_tests, list) else [],
+        )
+
+    schema = get_schema_for_document_type(document_type)
+    base_fields = {item.get("key"): item for item in rule_based.get("document_fields", []) if isinstance(item, dict)}
+    llm_fields = {item.get("key"): item for item in llm_parsed.get("document_fields", []) if isinstance(item, dict)}
+
+    merged_fields = []
+    for spec in schema:
+        key = spec["key"]
+        incoming = llm_fields.get(key) or base_fields.get(key) or {}
+        value_short = str(incoming.get("value_short", "") or "")
+        value_text = str(incoming.get("value_text", "") or "")
+        merged_fields.append({"key": key, "value_short": value_short, "value_text": value_text})
+
+    merged["document_fields"] = merged_fields
+    merged["mapping_provider"] = "ollama"
+    merged["mapping_model"] = os.getenv("OCR_OLLAMA_MODEL", "gpt-oss:120b-cloud").strip()
+    return merged
+
+
 def run_ocr_pipeline(file_path: str, document_type: str) -> dict[str, Any]:
     suffix = Path(file_path).suffix.lower()
     if suffix not in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}:
@@ -400,22 +618,25 @@ def run_ocr_pipeline(file_path: str, document_type: str) -> dict[str, Any]:
             "identity": {},
         }
 
-    provider = os.getenv("OCR_PROVIDER", "tesseract").strip().lower()
-    if provider == "gemini":
-        try:
-            raw_text = extract_text_with_gemini(file_path)
-        except Exception:
-            raw_text = extract_text(file_path)
-            provider = "tesseract_fallback"
-    else:
-        raw_text = extract_text(file_path)
+    provider = "tesseract"
+    raw_text = extract_text(file_path)
 
-    parsed = parse_document(raw_text, document_type)
+    rule_based = parse_document(raw_text, document_type)
+    llm_parsed, llm_model, llm_error = _ollama_map_fields(raw_text, document_type)
+    parsed = _merge_parsed(rule_based["parsed"], llm_parsed, document_type)
+    if llm_parsed and llm_model:
+        parsed["mapping_provider"] = "ollama"
+        parsed["mapping_model"] = llm_model
+    confidence = rule_based.get("confidence", 0.0)
+    if llm_parsed:
+        confidence = max(confidence, 85.0)
     identity = extract_identity(raw_text)
     return {
         "raw_text": raw_text,
-        "parsed": parsed["parsed"],
-        "confidence": parsed["confidence"],
+        "parsed": parsed,
+        "confidence": confidence,
         "provider": provider,
         "identity": identity,
+        "mapping_model": llm_model,
+        "mapping_error": llm_error,
     }

@@ -93,6 +93,9 @@ def process_document_ocr(document_id: int):
         is_valid, verify_message = _verify_patient_identity(document, result.get("identity", {}))
 
         parsed_fields = result["parsed"]
+        mapping_error = result.get("mapping_error", "")
+        if mapping_error:
+            parsed_fields["mapping_error"] = mapping_error
         if not is_valid:
             parsed_fields = {
                 "error": verify_message,

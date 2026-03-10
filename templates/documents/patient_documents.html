@@ -6,7 +6,194 @@
       <h1 class="page-title">Document Vault</h1>
       <p class="page-subtitle">Patient: {{ patient.user.full_name }}</p>
     </div>
-    <a class="btn btn-primary" href="/documents/upload/">Add Document</a>
+    <div class="d-flex gap-2">
+      {% if can_generate_summary %}
+      <form method="post" action="/patients/{{ patient.id }}/documents/summary/generate/">
+        {% csrf_token %}
+        <button class="btn btn-warning" type="submit">
+          {% if latest_summary %}Regenerate Summary{% else %}Generate Summary{% endif %}
+        </button>
+      </form>
+      {% endif %}
+      <a class="btn btn-primary" href="/documents/upload/">Add Document</a>
+    </div>
+  </div>
+
+  <div class="glass p-4 mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+      <div>
+        <h5 class="mb-1">Patient Intelligence Summary</h5>
+        <p class="text-secondary mb-0">Consolidated snapshot across all uploaded documents.</p>
+      </div>
+      {% if latest_summary %}
+      <small class="text-secondary">
+        Generated: {{ latest_summary.created_at|date:"Y-m-d H:i" }}
+        {% if latest_summary.generated_by %}by {{ latest_summary.generated_by.full_name }}{% endif %}
+      </small>
+      {% endif %}
+    </div>
+
+    {% if latest_summary %}
+    <div class="row g-3 mt-1">
+      <div class="col-md-4">
+        <div class="glass p-3 h-100">
+          <small class="text-secondary d-block">Documents Analysed</small>
+          <h4 class="mb-0">{{ latest_summary.source_document_count }}</h4>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="glass p-3 h-100">
+          <small class="text-secondary d-block">OCR Completed</small>
+          <h4 class="mb-0">{{ latest_summary.summary_data.ocr_done_count|default:0 }}</h4>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="glass p-3 h-100">
+          <small class="text-secondary d-block">Abnormal Tests</small>
+          <h4 class="mb-0">{{ latest_summary.summary_data.abnormal_tests|length }}</h4>
+        </div>
+      </div>
+    </div>
+
+    <div class="summary-board mt-3">
+      <div class="summary-header mb-3">
+        <div class="summary-kicker">Executive Clinical Snapshot</div>
+        <span class="status-pill status-info">
+          {{ latest_summary.summary_data.summary_provider|default:"rule_based" }}
+          {% if latest_summary.summary_data.summary_model %} · {{ latest_summary.summary_data.summary_model }}{% endif %}
+        </span>
+        <div class="text-secondary" style="font-size: 12px;">
+          Provider: {{ latest_summary.summary_data.summary_provider|default:"rule_based" }}{% if latest_summary.summary_data.summary_model %} ({{ latest_summary.summary_data.summary_model }}){% endif %}
+        </div>
+        <div class="summary-lead">
+          {{ latest_summary.summary_data.document_count|default:latest_summary.source_document_count }} document(s) processed,
+          OCR complete for {{ latest_summary.summary_data.ocr_done_count|default:0 }}.
+          {{ latest_summary.summary_data.abnormal_tests|length }} abnormal lab indicator(s),
+          {{ latest_summary.summary_data.medications|length }} medication mention(s),
+          and {{ latest_summary.summary_data.notes|length }} clinical note highlight(s) detected.
+          <div class="mt-2">
+            <small class="text-secondary">Use the cards below for detailed review by category.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="summary-card summary-card--doctor">
+            <h6>Doctor-Ready Summary</h6>
+            {% if latest_summary.summary_data.doctor_ready_sections %}
+              <div class="summary-list">
+                {% for row in latest_summary.summary_data.doctor_ready_sections %}
+                <div class="summary-item">
+                  <small>{{ row }}</small>
+                </div>
+                {% endfor %}
+              </div>
+              {% if latest_summary.summary_data.priority_flags %}
+              <div class="mt-2">
+                {% for flag in latest_summary.summary_data.priority_flags %}
+                <span class="kbd-pill me-1 mb-1">{{ flag }}</span>
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% if latest_summary.summary_data.summary_provider_requested and latest_summary.summary_data.summary_provider_requested != latest_summary.summary_data.summary_provider %}
+              <div class="alert alert-warning mt-2 mb-0">
+                {{ latest_summary.summary_data.summary_provider_requested|title }} requested but fallback used: {{ latest_summary.summary_data.summary_provider_error|default:"unknown reason" }}
+              </div>
+              {% endif %}
+            {% else %}
+              <p class="mb-0 text-secondary">No summary generated.</p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--abnormal">
+            <h6>Abnormal Lab Indicators</h6>
+            {% if latest_summary.summary_data.abnormal_tests %}
+              <div class="summary-list">
+                {% for t in latest_summary.summary_data.abnormal_tests %}
+                <div class="summary-item">
+                  <div class="fw-semibold">{{ t.test_name }}</div>
+                  <small>Value: {{ t.value }} {{ t.unit }} | Ref: {{ t.reference_range }} | Doc #{{ t.document_id }}</small>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="mb-0 text-secondary">No abnormal lab indicators detected from current extracted reports.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--meds">
+            <h6>Medication Mentions</h6>
+            {% if latest_summary.summary_data.medications %}
+              <ul class="summary-bullets mb-0">
+                {% for m in latest_summary.summary_data.medications %}
+                <li>{{ m }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="mb-0 text-secondary">No medication lines extracted yet.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--notes">
+            <h6>Clinical Notes Highlights</h6>
+            {% if latest_summary.summary_data.notes %}
+              <ul class="summary-bullets mb-0">
+                {% for n in latest_summary.summary_data.notes %}
+                <li>{{ n }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="mb-0 text-secondary">No clinical notes captured.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--trends">
+            <h6>Health History Timeline (Test Trends)</h6>
+            {% if latest_summary.summary_data.test_trends %}
+              <div class="summary-list">
+                {% for t in latest_summary.summary_data.test_trends|slice:":8" %}
+                <div class="summary-item">
+                  <div class="fw-semibold">{{ t.test_name }}{% if t.unit %} ({{ t.unit }}){% endif %}</div>
+                  <small style="white-space: pre-line;">{{ t.trend_text }}</small>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="mb-0 text-secondary">No longitudinal lab trends available yet.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="summary-card summary-card--timeline">
+            <h6>Recent Document Timeline</h6>
+            {% if latest_summary.summary_data.timeline %}
+              <div class="summary-list">
+                {% for event in latest_summary.summary_data.timeline|slice:":6" %}
+                <div class="summary-item">
+                  <div class="fw-semibold">{{ event.date }} · {{ event.type }}</div>
+                  <small>Doc #{{ event.document_id }} | OCR: {{ event.ocr_status }} | Signed: {% if event.signed %}Yes{% else %}No{% endif %}</small>
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="mb-0 text-secondary">No timeline events available.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info mt-3 mb-0">No summary generated yet. Click <strong>Generate Summary</strong> to build a patient-wide document briefing.</div>
+    {% endif %}
   </div>
 
   <div class="glass p-3">

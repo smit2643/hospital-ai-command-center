@@ -1,14 +1,15 @@
 from django.test import TestCase
 from django.forms import formset_factory
+from unittest.mock import patch
 from apps.accounts.models import User
 from apps.doctors.models import DoctorProfile
 from apps.patients.models import PatientProfile
 from apps.patients.models import PatientDoctorAssignment
 
 from .forms import OCRDynamicFieldForm
-from .models import PatientDocument
+from .models import PatientDocument, PatientDocumentSummary
 from .ocr import extract_identity, parse_document, parse_lab_report
-from .services import upsert_extraction_from_parsed
+from .services import generate_patient_document_summary, upsert_extraction_from_parsed
 
 
 class OCRParserTests(TestCase):
@@ -177,3 +178,96 @@ class OCRParserTests(TestCase):
         trigger_resp = self.client.get(f"/documents/{document.id}/ocr/trigger/")
         self.assertEqual(view_resp.status_code, 403)
         self.assertEqual(trigger_resp.status_code, 403)
+
+
+class PatientSummaryTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            email="admin-summary@example.com",
+            full_name="Admin Summary",
+            role=User.Role.ADMIN,
+            password="Secret123!",
+        )
+        self.doctor = User.objects.create_user(
+            email="doctor-summary@example.com",
+            full_name="Doctor Summary",
+            role=User.Role.DOCTOR,
+            password="Secret123!",
+        )
+        self.patient_user = User.objects.create_user(
+            email="patient-summary@example.com",
+            full_name="Patient Summary",
+            role=User.Role.PATIENT,
+            password="Secret123!",
+        )
+        self.doctor_profile = DoctorProfile.objects.create(
+            user=self.doctor,
+            specialization="Cardiology",
+            license_number="SUM-001",
+            years_experience=8,
+            approval_status=DoctorProfile.ApprovalStatus.APPROVED,
+        )
+        self.patient = PatientProfile.objects.create(user=self.patient_user)
+        PatientDoctorAssignment.objects.create(patient=self.patient, doctor=self.doctor_profile, assigned_by=self.admin)
+
+    def test_generate_patient_document_summary(self):
+        doc = PatientDocument.objects.create(
+            patient=self.patient,
+            uploaded_by=self.doctor,
+            file="patients/1/documents/sum-lab.png",
+            document_type=PatientDocument.DocumentType.LAB_REPORT,
+            ocr_status=PatientDocument.OCRStatus.DONE,
+        )
+        parsed = {
+            "report_date": "2026-03-05",
+            "hospital_name": "City Care Multispecialty Hospital",
+            "doctor_name": "Dr. Aria Menon",
+            "notes": "Mild iron deficiency trend.",
+            "document_fields": [
+                {"key": "diagnosis", "value_text": "Iron deficiency"},
+                {"key": "medications", "value_text": "Tab Iron supplement 1 daily"},
+            ],
+            "tests": [
+                {"test_name": "Hemoglobin", "value": "9.5", "unit": "g/dL", "reference_range": "12.0-16.0"},
+            ],
+        }
+        upsert_extraction_from_parsed(doc, parsed, raw_text="x")
+        doc2 = PatientDocument.objects.create(
+            patient=self.patient,
+            uploaded_by=self.doctor,
+            file="patients/1/documents/sum-lab-2.png",
+            document_type=PatientDocument.DocumentType.LAB_REPORT,
+            ocr_status=PatientDocument.OCRStatus.DONE,
+        )
+        parsed2 = {
+            "report_date": "2023-03-05",
+            "hospital_name": "City Care Multispecialty Hospital",
+            "doctor_name": "Dr. Aria Menon",
+            "notes": "Trend review suggested.",
+            "document_fields": [
+                {"key": "diagnosis", "value_text": "Iron deficiency"},
+                {"key": "medications", "value_text": "Tab Iron supplement 1 daily"},
+            ],
+            "tests": [
+                {"test_name": "Hemoglobin", "value": "11.2", "unit": "g/dL", "reference_range": "12.0-16.0"},
+            ],
+        }
+        upsert_extraction_from_parsed(doc2, parsed2, raw_text="y")
+
+        with patch.dict("os.environ", {"SUMMARY_LLM_PROVIDER": "rule_based"}):
+            summary = generate_patient_document_summary(self.patient, generated_by=self.doctor)
+        self.assertIsInstance(summary, PatientDocumentSummary)
+        self.assertEqual(summary.source_document_count, 2)
+        self.assertIn("abnormal lab indicator(s)", summary.summary_text)
+        self.assertEqual(summary.summary_data["document_count"], 2)
+        self.assertEqual(len(summary.summary_data["abnormal_tests"]), 2)
+        self.assertIn("doctor_ready_summary", summary.summary_data)
+        self.assertIn("Trend-ready tests:", summary.summary_data["doctor_ready_summary"])
+        trend_map = {item["test_name"]: item for item in summary.summary_data["test_trends"]}
+        self.assertIn("Hemoglobin", trend_map)
+        self.assertEqual(len(trend_map["Hemoglobin"]["points"]), 2)
+
+    def test_patient_cannot_generate_summary(self):
+        self.client.login(email=self.patient_user.email, password="Secret123!")
+        response = self.client.post(f"/patients/{self.patient.id}/documents/summary/generate/")
+        self.assertEqual(response.status_code, 403)

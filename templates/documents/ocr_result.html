@@ -22,10 +22,26 @@
       <div class="metric-label">Signature Status</div>
       <div class="metric-value" style="font-size:1rem" id="signature-status">{{ document.signature_status }}</div>
     </div>
+    <div class="metric-card">
+      <div class="metric-label">Field Mapping</div>
+      <div class="metric-value" style="font-size:1rem">
+        {% if latest_result and latest_result.parsed_fields.mapping_provider %}
+          {{ latest_result.parsed_fields.mapping_provider }}
+          {% if latest_result.parsed_fields.mapping_model %}
+            · {{ latest_result.parsed_fields.mapping_model }}
+          {% endif %}
+        {% else %}
+          rule-based
+        {% endif %}
+      </div>
+    </div>
   </div>
 
   {% if latest_error %}
     <div class="alert alert-danger" id="ocr-error">{{ latest_error }}</div>
+  {% endif %}
+  {% if latest_result and latest_result.parsed_fields.mapping_error %}
+    <div class="alert alert-warning">Mapping fallback used: {{ latest_result.parsed_fields.mapping_error }}</div>
   {% endif %}
   {% if extraction.identity_message %}
     <div class="alert {% if extraction.identity_verified %}alert-success{% else %}alert-warning{% endif %}" id="identity-message">{{ extraction.identity_message }}</div>
