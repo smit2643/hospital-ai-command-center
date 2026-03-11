@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+from celery.schedules import crontab
+
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -60,6 +62,7 @@ INSTALLED_APPS = [
     "apps.patients",
     "apps.documents",
     "apps.signatures",
+    "apps.followups",
 ]
 
 MIDDLEWARE = [
@@ -132,6 +135,12 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_ALWAYS_EAGER = as_bool(os.getenv("CELERY_TASK_ALWAYS_EAGER"), default=False)
+CELERY_BEAT_SCHEDULE = {
+    "send-followup-reminders-daily": {
+        "task": "apps.followups.tasks.send_followup_reminders",
+        "schedule": crontab(hour=8, minute=0),
+    }
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],

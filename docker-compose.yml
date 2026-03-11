@@ -66,6 +66,26 @@ services:
       - .:/app
     command: celery -A hospital_ai worker -l info
 
+  beat:
+    build: .
+    container_name: hospital_ai_beat
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/hospital_ai
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      DEBUG: "True"
+      ALLOWED_HOSTS: localhost,127.0.0.1
+    depends_on:
+      - db
+      - redis
+      - ollama
+    volumes:
+      - .:/app
+    command: celery -A hospital_ai beat -l info
+
 volumes:
   postgres_data:
   ollama_data:
