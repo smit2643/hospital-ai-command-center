@@ -1,0 +1,10 @@
+Your follow-up is due tomorrow.
+
+Patient: {{ patient_name }}
+Doctor: {{ doctor_name }}
+Due date: {{ due_date }}
+
+Book appointment:
+{{ appointment_url }}
+
+If you have already scheduled this visit, you can ignore this reminder.

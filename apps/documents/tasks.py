@@ -4,6 +4,7 @@ from datetime import datetime
 from celery import shared_task
 
 from apps.core.services import log_audit
+from apps.followups.services import create_or_update_followup
 
 from .models import OCRResult, PatientDocument
 from .ocr import run_ocr_pipeline
@@ -134,6 +135,7 @@ def process_document_ocr(document_id: int):
             identity_verified=True,
             identity_message=verify_message,
         )
+        create_or_update_followup(document)
         document.extracted_summary = {}
         document.extracted_confidence = result["confidence"]
         document.ocr_status = PatientDocument.OCRStatus.DONE
