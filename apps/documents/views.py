@@ -11,6 +11,7 @@ from apps.patients.models import PatientProfile
 from apps.signatures.models import SignatureRequest
 from apps.signatures.services import build_signature_expiry
 from apps.signatures.tasks import dispatch_signature_request_email
+from apps.followups.services import create_or_update_followup
 
 from .forms import DocumentManageForm, DocumentUploadForm, OCRDynamicFieldForm, OCRLabTestForm, OCRReviewForm
 from .models import DocumentExtractedField, DocumentLabTest, PatientDocument
@@ -394,6 +395,7 @@ def ocr_result(request, document_id: int):
                 extraction.tests.all().delete()
 
             mark_extraction_reviewed(extraction, request.user)
+            create_or_update_followup(document)
 
             document.extracted_summary = {}
             if document.ocr_status != PatientDocument.OCRStatus.DONE:
